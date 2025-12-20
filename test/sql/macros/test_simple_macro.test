@@ -28,7 +28,7 @@ select simple(1)
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	simple	1	NULL	(empty)
+(empty)	0	1	simple	1	NULL
 
 query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
@@ -75,8 +75,8 @@ select simple(1)
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	simple	1	2	(empty)
-0	2	simple	3	NULL	(empty)
+(empty)	0	1	simple	1	2
+(empty)	0	2	simple	3	NULL
 
 query II
 select snapshot_id, changes FROM snapshots()

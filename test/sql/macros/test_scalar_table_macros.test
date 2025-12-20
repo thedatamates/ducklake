@@ -32,8 +32,8 @@ CREATE MACRO xt(a) as 1;
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	2	xt	3	NULL	(empty)
-0	3	xt	4	NULL	(empty)
+(empty)	0	2	xt	3	NULL
+(empty)	0	3	xt	4	NULL
 
 query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;

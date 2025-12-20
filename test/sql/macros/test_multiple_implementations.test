@@ -27,7 +27,7 @@ CREATE MACRO multi_add
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	multi_add	1	NULL	(empty)
+(empty)	0	1	multi_add	1	NULL
 
 query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;

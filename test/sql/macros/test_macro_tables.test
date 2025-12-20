@@ -29,7 +29,7 @@ CREATE MACRO xt(a,_name) as TABLE SELECT * FROM test_tbl WHERE(id>=a or name=_na
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	2	xt	3	NULL	(empty)
+(empty)	0	2	xt	3	NULL
 
 query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;

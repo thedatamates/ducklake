@@ -23,7 +23,7 @@ CREATE MACRO add_default(a, b := 5) AS a + b;
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	add_default	1	NULL	(empty)
+(empty)	0	1	add_default	1	NULL
 
 query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
