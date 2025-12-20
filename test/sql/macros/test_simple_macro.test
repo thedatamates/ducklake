@@ -25,20 +25,20 @@ select simple(1)
 1
 
 # # Check Macro Tables
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	simple	1	NULL
+(empty)	0	1	simple	1	NULL
 
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-1	0	duckdb	a	scalar
+(empty)	1	0	duckdb	a	scalar
 
-query IIIIIII
+query IIIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-1	0	0	a	unknown	NULL	unknown
+(empty)	1	0	0	a	unknown	NULL	unknown
 
 statement ok
 drop macro simple;
@@ -72,11 +72,11 @@ select simple(1)
 1
 
 # It now gets a new id
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	simple	1	2
-0	2	simple	3	NULL
+(empty)	0	1	simple	1	2
+(empty)	0	2	simple	3	NULL
 
 query II
 select snapshot_id, changes FROM snapshots()

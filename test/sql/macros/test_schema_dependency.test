@@ -28,18 +28,18 @@ statement ok
 CREATE MACRO test.xt(a,_name) as TABLE SELECT * FROM test.test_tbl WHERE(id>=a or name=_name);
 
 # Check Macro Tables
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-1	2	simple	2	NULL
-1	4	xt	4	NULL
+(empty)	1	2	simple	2	NULL
+(empty)	1	4	xt	4	NULL
 
 statement ok
 DROP SCHEMA test CASCADE;
 
 # Check Macro Tables
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-1	2	simple	2	5
-1	4	xt	4	5
+(empty)	1	2	simple	2	5
+(empty)	1	4	xt	4	5

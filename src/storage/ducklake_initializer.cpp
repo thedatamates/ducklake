@@ -97,21 +97,24 @@ void DuckLakeInitializer::Initialize() {
 void DuckLakeInitializer::InitializeDataPath() {
 	auto &data_path = options.data_path;
 	if (data_path.empty()) {
+		options.effective_data_path = "";
 		return;
 	}
 
-	// This functions will:
-	//	1. Check if a known extension pattern matches the start of the data_path
-	//	2. If so, either load the required extension or throw a relevant error message
 	CheckAndAutoloadedRequiredExtension(data_path);
 
 	auto &fs = FileSystem::GetFileSystem(context);
 	auto separator = fs.PathSeparator(data_path);
-	// ensure the paths we store always end in a path separator
 	if (!StringUtil::EndsWith(data_path, separator)) {
 		data_path += separator;
 	}
 	catalog.Separator() = separator;
+
+	if (options.catalog_id.empty()) {
+		options.effective_data_path = data_path;
+	} else {
+		options.effective_data_path = data_path + options.catalog_id + separator;
+	}
 }
 
 void DuckLakeInitializer::InitializeNewDuckLake(DuckLakeTransaction &transaction, bool has_explicit_schema) {
@@ -142,9 +145,8 @@ void DuckLakeInitializer::LoadExistingDuckLake(DuckLakeTransaction &transaction)
 	for (auto &tag : metadata.tags) {
 		if (tag.key == "version") {
 			string version = tag.value;
-			if (version != "0.4-dev1" && !options.migrate_if_required) {
-				// Throw when Loading the Ducklake if a Migration is required and migrate_if_required option is false
-				throw InvalidInputException("DuckLake Extension requires a DuckLake Catalog version of 0.4-dev1 or "
+			if (version != "0.5-dev1" && !options.migrate_if_required) {
+				throw InvalidInputException("DuckLake Extension requires a DuckLake Catalog version of 0.5-dev1 or "
 				                            "higher, current version is %s "
 				                            "and migrate_if_required is set to false",
 				                            version);
@@ -165,8 +167,12 @@ void DuckLakeInitializer::LoadExistingDuckLake(DuckLakeTransaction &transaction)
 				metadata_manager.MigrateV03();
 				version = "0.4-dev1";
 			}
-			if (version != "0.4-dev1") {
-				throw NotImplementedException("Only DuckLake versions 0.1, 0.2, 0.3-dev1, 0.3, 0.4-dev1 are supported");
+			if (version == "0.4-dev1") {
+				metadata_manager.MigrateV04();
+				version = "0.5-dev1";
+			}
+			if (version != "0.5-dev1") {
+				throw NotImplementedException("Only DuckLake versions 0.1, 0.2, 0.3-dev1, 0.3, 0.4-dev1, 0.5-dev1 are supported");
 			}
 		}
 		if (tag.key == "data_path") {

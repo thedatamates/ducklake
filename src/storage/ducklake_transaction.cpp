@@ -1786,6 +1786,8 @@ unique_ptr<QueryResult> DuckLakeTransaction::Query(string query) {
 	query = StringUtil::Replace(query, "{METADATA_SCHEMA_ESCAPED}", schema_identifier_escaped);
 	query = StringUtil::Replace(query, "{METADATA_PATH}", metadata_path);
 	query = StringUtil::Replace(query, "{DATA_PATH}", data_path);
+	auto catalog_id = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.CatalogId());
+	query = StringUtil::Replace(query, "{CATALOG_ID}", catalog_id);
 	return connection.Query(query);
 }
 

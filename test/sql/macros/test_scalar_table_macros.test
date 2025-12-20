@@ -29,25 +29,25 @@ statement ok
 CREATE MACRO xt(a) as 1;
 
 # Check Macro Tables
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	2	xt	3	NULL
-0	3	xt	4	NULL
+(empty)	0	2	xt	3	NULL
+(empty)	0	3	xt	4	NULL
 
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-2	0	duckdb	SELECT * FROM test_tbl WHERE ((id >= a) OR ("name" = _name))	table
-3	0	duckdb	1	scalar
+(empty)	2	0	duckdb	SELECT * FROM test_tbl WHERE ((id >= a) OR ("name" = _name))	table
+(empty)	3	0	duckdb	1	scalar
 
 
-query IIIIIII
+query IIIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-2	0	0	a	unknown	NULL	unknown
-2	0	1	_name	unknown	NULL	unknown
-3	0	0	a	unknown	NULL	unknown
+(empty)	2	0	0	a	unknown	NULL	unknown
+(empty)	2	0	1	_name	unknown	NULL	unknown
+(empty)	3	0	0	a	unknown	NULL	unknown
 
 query II
 FROM xt(5,'tom');

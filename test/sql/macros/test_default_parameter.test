@@ -20,21 +20,21 @@ statement ok
 CREATE MACRO add_default(a, b := 5) AS a + b;
 
 # Check Macro Tables
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	add_default	1	NULL
+(empty)	0	1	add_default	1	NULL
 
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-1	0	duckdb	(a + b)	scalar
+(empty)	1	0	duckdb	(a + b)	scalar
 
-query IIIIIII
+query IIIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-1	0	0	a	unknown	NULL	unknown
-1	0	1	b	unknown	5	int32
+(empty)	1	0	0	a	unknown	NULL	unknown
+(empty)	1	0	1	b	unknown	5	int32
 
 query I
 select add_default(1)

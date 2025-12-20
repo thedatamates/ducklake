@@ -51,6 +51,8 @@ unique_ptr<QueryResult> PostgresMetadataManager::ExecuteQuery(DuckLakeSnapshot s
 	query = StringUtil::Replace(query, "{METADATA_SCHEMA_ESCAPED}", schema_identifier_escaped);
 	query = StringUtil::Replace(query, "{METADATA_PATH}", metadata_path);
 	query = StringUtil::Replace(query, "{DATA_PATH}", data_path);
+	auto catalog_id = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.CatalogId());
+	query = StringUtil::Replace(query, "{CATALOG_ID}", catalog_id);
 
 	return connection.Query(StringUtil::Format("CALL %s(%s, %s)", command, catalog_literal, SQLString(query)));
 }
@@ -66,8 +68,8 @@ string PostgresMetadataManager::GetLatestSnapshotQuery() const {
 	return R"(
 	SELECT * FROM postgres_query({METADATA_CATALOG_NAME_LITERAL},
 		'SELECT snapshot_id, schema_version, next_catalog_id, next_file_id
-		 FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot WHERE snapshot_id = (
-		     SELECT MAX(snapshot_id) FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot
+		 FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot WHERE catalog_id = ' || {CATALOG_ID} || ' AND snapshot_id = (
+		     SELECT MAX(snapshot_id) FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot WHERE catalog_id = ' || {CATALOG_ID} || '
 		 );')
 	)";
 }

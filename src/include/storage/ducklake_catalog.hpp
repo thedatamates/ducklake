@@ -51,7 +51,10 @@ public:
 		return options.metadata_path;
 	}
 	const string &DataPath() const {
-		return options.data_path;
+		return options.effective_data_path;
+	}
+	const string &CatalogId() const {
+		return options.catalog_id;
 	}
 	const string &MetadataType() const {
 		return metadata_type;

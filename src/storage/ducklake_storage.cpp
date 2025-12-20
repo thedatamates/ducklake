@@ -19,6 +19,8 @@ static void HandleDuckLakeOption(DuckLakeOptions &options, const string &option,
 		options.metadata_database = value.ToString();
 	} else if (lcase == "metadata_path") {
 		options.metadata_path = value.ToString();
+	} else if (lcase == "catalog_id") {
+		options.catalog_id = value.ToString();
 	} else if (lcase == "metadata_parameters") {
 		auto &children = MapValue::GetChildren(value);
 		for (auto &child : children) {

@@ -1,0 +1,95 @@
+# name: test/sql/multi_catalog/catalog_isolation.test
+# description: test that multiple catalogs with different catalog_ids are isolated
+# group: [multi_catalog]
+
+require ducklake
+
+require parquet
+
+test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+
+test-env DATA_PATH __TEST_DIR__
+
+# Create shared metadata location that will be used by multiple catalogs
+
+# First catalog with catalog_id 'tenant_a'
+statement ok
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS tenant_a (DATA_PATH '${DATA_PATH}/tenant_a', CATALOG_ID 'tenant_a');
+
+statement ok
+USE tenant_a;
+
+statement ok
+CREATE TABLE users (id INT, name VARCHAR);
+
+statement ok
+INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');
+
+# Verify data in tenant_a
+query II
+SELECT * FROM users ORDER BY id;
+----
+1	Alice
+2	Bob
+
+# Detach and attach a second catalog with different catalog_id
+statement ok
+USE memory;
+
+# Second catalog with catalog_id 'tenant_b' pointing to same metadata
+statement ok
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS tenant_b (DATA_PATH '${DATA_PATH}/tenant_b', CATALOG_ID 'tenant_b');
+
+statement ok
+USE tenant_b;
+
+# This should be empty - tenant_b has no tables yet
+statement error
+SELECT * FROM users;
+----
+Table with name users does not exist!
+
+# Create different data in tenant_b
+statement ok
+CREATE TABLE users (id INT, name VARCHAR);
+
+statement ok
+INSERT INTO users VALUES (100, 'Xavier'), (200, 'Yuki'), (300, 'Zara');
+
+# Verify tenant_b sees its own data
+query II
+SELECT * FROM users ORDER BY id;
+----
+100	Xavier
+200	Yuki
+300	Zara
+
+# Go back to tenant_a and verify its data is unchanged
+statement ok
+USE memory;
+
+statement ok
+DETACH tenant_b;
+
+statement ok
+USE tenant_a;
+
+# tenant_a should still have its original data
+query II
+SELECT * FROM users ORDER BY id;
+----
+1	Alice
+2	Bob
+
+# Verify the count is correct
+query I
+SELECT COUNT(*) FROM users;
+----
+2
+
+# Clean up
+statement ok
+USE memory;
+
+statement ok
+DETACH tenant_a;

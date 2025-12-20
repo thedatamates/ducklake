@@ -21,7 +21,7 @@ struct CleanupBindData : public TableFunctionData {
 		}
 		switch (type) {
 		case CleanupType::OLD_FILES:
-			return StringUtil::Format("WHERE schedule_start < %s%s%s", quote, timestamp_filter, quote);
+			return StringUtil::Format("schedule_start < %s%s%s", quote, timestamp_filter, quote);
 		case CleanupType::ORPHANED_FILES:
 			return StringUtil::Format(" AND last_modified < %s%s%s", quote, timestamp_filter, quote);
 		default:
