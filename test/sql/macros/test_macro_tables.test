@@ -29,19 +29,19 @@ CREATE MACRO xt(a,_name) as TABLE SELECT * FROM test_tbl WHERE(id>=a or name=_na
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-(empty)	0	2	xt	3	NULL
+0	2	xt	3	NULL	(empty)
 
-query IIIIII
+query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-(empty)	2	0	duckdb	SELECT * FROM test_tbl WHERE ((id >= a) OR ("name" = _name))	table
+2	0	duckdb	SELECT * FROM test_tbl WHERE ((id >= a) OR ("name" = _name))	table
 
 
-query IIIIIIII
+query IIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-(empty)	2	0	0	a	unknown	NULL	unknown
-(empty)	2	0	1	_name	unknown	NULL	unknown
+2	0	0	a	unknown	NULL	unknown
+2	0	1	_name	unknown	NULL	unknown
 
 query II
 FROM xt(5,'tom');

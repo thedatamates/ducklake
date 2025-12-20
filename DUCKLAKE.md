@@ -1022,3 +1022,125 @@ SELECT * FROM workspace.datasets.customers;   -- workspace.datasets.customers
 4. **Implement Phase 3** - Query changes (bulk of work)
 5. **Implement Phase 4** - Testing
 6. **Integrate with Data Plane Service**
+
+---
+
+## catalog_id Column Analysis
+
+### How DuckLake Query Resolution Works
+
+When a user queries `SELECT * FROM history.my_table`:
+
+1. **Schema Resolution**: Look up `history` in `ducklake_schema` → get `schema_id`
+2. **Table Resolution**: Look up `my_table` with that `schema_id` in `ducklake_table` → get `table_id`
+3. **File Resolution**: Query `ducklake_data_file WHERE table_id = X` → get parquet file paths
+4. **Read Files**: Read the parquet files
+
+The key insight: once you have a valid `table_id`, downstream queries are implicitly tenant-scoped because `table_id` is globally unique and was resolved from a tenant-filtered schema lookup.
+
+### Current Isolation Model (METADATA_SCHEMA)
+
+DuckLake uses PostgreSQL schema-level isolation:
+- Tenant A: `tenant_a.ducklake_schema`, `tenant_a.ducklake_table`, etc.
+- Tenant B: `tenant_b.ducklake_schema`, `tenant_b.ducklake_table`, etc.
+
+Each tenant has completely separate tables. No row-level filtering needed.
+
+### Our Isolation Model (catalog_id column)
+
+All tenants share the same PostgreSQL schema:
+- Single `ducklake.ducklake_schema` table with rows for ALL tenants
+- Single `ducklake.ducklake_table` table with rows for ALL tenants
+- Filter by `WHERE catalog_id = 'tenant_a'`
+
+### Query Patterns in ducklake_metadata_manager.cpp
+
+**Pattern 1: Bulk Loading (NO foreign key filter)**
+
+`GetCatalogForSnapshot()` loads the entire catalog structure:
+
+```sql
+-- Line 338: Load ALL schemas (no FK filter)
+SELECT schema_id, schema_uuid, schema_name, path, path_is_relative
+FROM ducklake_schema
+WHERE {SNAPSHOT_ID} >= begin_snapshot AND ...
+
+-- Line 387: Load ALL tables (no FK filter)
+SELECT schema_id, table_id, table_uuid, table_name, ...
+FROM ducklake_table
+WHERE {SNAPSHOT_ID} >= begin_snapshot AND ...
+
+-- Line 487: Load ALL views (no FK filter)
+SELECT view_id, view_uuid, schema_id, view_name, ...
+FROM ducklake_view
+WHERE {SNAPSHOT_ID} >= begin_snapshot AND ...
+```
+
+These queries load EVERYTHING visible at a snapshot. In our model, they NEED `catalog_id` filtering.
+
+**Pattern 2: FK-Filtered Queries (filtered by table_id/schema_id)**
+
+```sql
+-- Line 1149: Get files for specific table
+SELECT ...
+FROM ducklake_data_file
+WHERE table_id = %d AND {SNAPSHOT_ID} >= begin_snapshot AND ...
+
+-- Line 1152: Get delete files for specific table
+SELECT ...
+FROM ducklake_delete_file
+WHERE table_id = %d AND ...
+```
+
+These queries filter by `table_id` which was already resolved from tenant-filtered schema lookup. They inherit tenant isolation from the FK.
+
+### Tables That NEED catalog_id
+
+These tables are queried in bulk without foreign key filtering:
+
+| Table | Reason |
+|-------|--------|
+| `ducklake_schema` | Loaded in bulk by GetCatalogForSnapshot (line 338) |
+| `ducklake_table` | Loaded in bulk by GetCatalogForSnapshot (line 387) |
+| `ducklake_view` | Loaded in bulk by GetCatalogForSnapshot (line 487) |
+| `ducklake_macro` | Loaded in bulk by GetCatalogForSnapshot (line 522) |
+| `ducklake_partition_info` | Loaded in bulk by GetCatalogForSnapshot (line 542) |
+| `ducklake_snapshot` | Queried for time travel (line 2551, 2575, etc.) |
+| `ducklake_snapshot_changes` | Joined with ducklake_snapshot |
+| `ducklake_schema_versions` | Loaded for schema version tracking |
+| `ducklake_table_stats` | Queried without FK filter (line 649) |
+| `ducklake_files_scheduled_for_deletion` | Queried without FK filter (line 2875) |
+
+### Tables That DON'T Need catalog_id
+
+These tables are always queried with a foreign key filter (table_id, schema_id, etc.):
+
+| Table | Filter Column | Reason |
+|-------|---------------|--------|
+| `ducklake_column` | table_id | Always filtered by table_id |
+| `ducklake_data_file` | table_id | Always filtered by table_id |
+| `ducklake_delete_file` | table_id | Always filtered by table_id |
+| `ducklake_file_column_stats` | table_id, data_file_id | Always filtered by FK |
+| `ducklake_table_column_stats` | table_id | Joined with ducklake_table_stats |
+| `ducklake_partition_column` | partition_id | Joined with ducklake_partition_info |
+| `ducklake_file_partition_value` | data_file_id | Always filtered by data_file_id |
+| `ducklake_tag` | object_id | Filtered by object_id (table_id/view_id) |
+| `ducklake_column_tag` | table_id | Always filtered by table_id |
+| `ducklake_inlined_data_tables` | table_id | Always filtered by table_id |
+| `ducklake_column_mapping` | table_id | Always filtered by table_id |
+| `ducklake_name_mapping` | mapping_id | Always filtered by mapping_id |
+| `ducklake_macro_impl` | macro_id | Always filtered by macro_id |
+| `ducklake_macro_parameters` | macro_id | Always filtered by macro_id |
+
+### Global Tables (NO catalog_id)
+
+| Table | Reason |
+|-------|--------|
+| `ducklake_metadata` | Global config (version, data_path, encrypted). Instance-level, not tenant-level. |
+
+### Implementation Strategy
+
+1. Add `catalog_id` column only to tables that need it (10 tables)
+2. Add `WHERE catalog_id = {CATALOG_ID}` to bulk queries
+3. Tables filtered by FK inherit isolation - no changes needed
+4. Use explicit column names in INSERT statements to avoid position dependency

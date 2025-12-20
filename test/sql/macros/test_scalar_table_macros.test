@@ -32,22 +32,22 @@ CREATE MACRO xt(a) as 1;
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-(empty)	0	2	xt	3	NULL
-(empty)	0	3	xt	4	NULL
+0	2	xt	3	NULL	(empty)
+0	3	xt	4	NULL	(empty)
 
-query IIIIII
+query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-(empty)	2	0	duckdb	SELECT * FROM test_tbl WHERE ((id >= a) OR ("name" = _name))	table
-(empty)	3	0	duckdb	1	scalar
+2	0	duckdb	SELECT * FROM test_tbl WHERE ((id >= a) OR ("name" = _name))	table
+3	0	duckdb	1	scalar
 
 
-query IIIIIIII
+query IIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-(empty)	2	0	0	a	unknown	NULL	unknown
-(empty)	2	0	1	_name	unknown	NULL	unknown
-(empty)	3	0	0	a	unknown	NULL	unknown
+2	0	0	a	unknown	NULL	unknown
+2	0	1	_name	unknown	NULL	unknown
+3	0	0	a	unknown	NULL	unknown
 
 query II
 FROM xt(5,'tom');

@@ -28,17 +28,17 @@ select simple(1)
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-(empty)	0	1	simple	1	NULL
+0	1	simple	1	NULL	(empty)
 
-query IIIIII
+query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-(empty)	1	0	duckdb	a	scalar
+1	0	duckdb	a	scalar
 
-query IIIIIIII
+query IIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-(empty)	1	0	0	a	unknown	NULL	unknown
+1	0	0	a	unknown	NULL	unknown
 
 statement ok
 drop macro simple;
@@ -75,8 +75,8 @@ select simple(1)
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-(empty)	0	1	simple	1	2
-(empty)	0	2	simple	3	NULL
+0	1	simple	1	2	(empty)
+0	2	simple	3	NULL	(empty)
 
 query II
 select snapshot_id, changes FROM snapshots()
