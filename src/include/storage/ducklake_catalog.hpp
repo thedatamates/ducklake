@@ -53,8 +53,14 @@ public:
 	const string &DataPath() const {
 		return options.effective_data_path;
 	}
-	const string &CatalogId() const {
+	const string &BaseDataPath() const {
+		return options.data_path;
+	}
+	idx_t CatalogId() const {
 		return options.catalog_id;
+	}
+	const string &CatalogName() const {
+		return options.catalog_name;
 	}
 	const string &MetadataType() const {
 		return metadata_type;

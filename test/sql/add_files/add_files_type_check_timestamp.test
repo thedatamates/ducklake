@@ -17,7 +17,7 @@ test-env DATA_PATH __TEST_DIR__
 
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake  (DATA_PATH '${DATA_PATH}/ducklake_add_files_type_timestamp')
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake  (DATA_PATH '${DATA_PATH}/ducklake_add_files_type_timestamp', CATALOG 'test')
 
 statement ok
 COPY (SELECT DATE '2000-01-01' AS col1) TO '${DATA_PATH}/date.parquet';

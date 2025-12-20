@@ -10,7 +10,7 @@ test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
 test-env DATA_PATH __TEST_DIR__
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/test_schema_dependency');
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/test_schema_dependency', CATALOG 'test');
 
 statement ok
 use ducklake
@@ -31,8 +31,8 @@ CREATE MACRO test.xt(a,_name) as TABLE SELECT * FROM test.test_tbl WHERE(id>=a o
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-(empty)	1	2	simple	2	NULL
-(empty)	1	4	xt	4	NULL
+0	1	2	simple	2	NULL
+0	1	4	xt	4	NULL
 
 statement ok
 DROP SCHEMA test CASCADE;
@@ -41,5 +41,5 @@ DROP SCHEMA test CASCADE;
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-(empty)	1	2	simple	2	5
-(empty)	1	4	xt	4	5
+0	1	2	simple	2	5
+0	1	4	xt	4	5

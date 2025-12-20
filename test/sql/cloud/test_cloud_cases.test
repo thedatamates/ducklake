@@ -11,7 +11,7 @@ test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
 test-env DATA_PATH __TEST_DIR__
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS lake (DATA_PATH '${DATA_PATH}/test_cloud_cases/', METADATA_CATALOG 'metadata');
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS lake (DATA_PATH '${DATA_PATH}/test_cloud_cases/', METADATA_CATALOG 'metadata', CATALOG 'test');
 
 statement ok
 use lake;

@@ -13,7 +13,7 @@ test-env DATA_PATH __TEST_DIR__
 
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_inlining_partitions', METADATA_CATALOG 'ducklake_metadata', DATA_INLINING_ROW_LIMIT 1000)
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_inlining_partitions', METADATA_CATALOG 'ducklake_metadata', DATA_INLINING_ROW_LIMIT 1000, CATALOG 'test')
 
 statement ok
 USE ducklake
@@ -33,7 +33,7 @@ endloop
 
 # all data is inlined
 query I
-SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_inlining_partitions/main/partitioned_tbl/**')
+SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_inlining_partitions/test/main/partitioned_tbl/**')
 ----
 0
 
@@ -59,7 +59,7 @@ CALL ducklake_flush_inlined_data('ducklake')
 
 # we now have 14 files
 query I
-SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_inlining_partitions/main/partitioned_tbl/**')
+SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_inlining_partitions/test/main/partitioned_tbl/**')
 ----
 14
 

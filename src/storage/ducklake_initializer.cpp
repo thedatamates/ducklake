@@ -110,10 +110,10 @@ void DuckLakeInitializer::InitializeDataPath() {
 	}
 	catalog.Separator() = separator;
 
-	if (options.catalog_id.empty()) {
+	if (options.catalog_name.empty()) {
 		options.effective_data_path = data_path;
 	} else {
-		options.effective_data_path = data_path + options.catalog_id + separator;
+		options.effective_data_path = data_path + options.catalog_name + separator;
 	}
 }
 

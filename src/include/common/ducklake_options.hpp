@@ -25,7 +25,8 @@ struct DuckLakeOptions {
 	string metadata_path;
 	string metadata_schema;
 	string data_path;
-	string catalog_id;
+	string catalog_name;
+	idx_t catalog_id = 0;
 	string effective_data_path;
 	bool override_data_path = false;
 	AccessMode access_mode = AccessMode::AUTOMATIC;

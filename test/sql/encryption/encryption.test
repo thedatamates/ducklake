@@ -9,7 +9,7 @@ require parquet
 require httpfs
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/ducklake_encryption.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_encryption_files', ENCRYPTED)
+ATTACH 'ducklake:__TEST_DIR__/ducklake_encryption.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_encryption_files', ENCRYPTED, CATALOG 'test')
 
 statement ok
 BEGIN
@@ -69,7 +69,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/ducklake_encryption.db' AS ducklake
+ATTACH 'ducklake:__TEST_DIR__/ducklake_encryption.db' AS ducklake (CATALOG 'test')
 
 query II
 SELECT COUNT(*), SUM(id) FROM ducklake.test

@@ -70,7 +70,8 @@ Enter the following SQL statements:
 create secret (type s3, key_id 'minioadmin', secret 'minioadmin', endpoint '10.1.0.202:9000', use_ssl false, url_style 'path');
 
 --- Attach a local DuckDB file (minio-ducklake-demo.ducklake) and a local (but using S3 protocol) bucket
-ATTACH 'ducklake:minio-ducklake-demo.ducklake' as db (DATA_PATH 's3://demo-ducklake-minio-bucket');
+--- CATALOG_ID is required for multi-tenant isolation - files will be stored at s3://demo-ducklake-minio-bucket/demo/
+ATTACH 'ducklake:minio-ducklake-demo.ducklake' as db (DATA_PATH 's3://demo-ducklake-minio-bucket', CATALOG_ID 'demo');
 
 --- Use the just attached DuckLake as default Database
 USE db;
@@ -78,7 +79,7 @@ USE db;
 --- Create a table with some data (in the ducklake)
 CREATE TABLE numbers AS (SELECT random() FROM range(100000));
 
---- Check which files are in the bucket
+--- Check which files are in the bucket (files are under demo/ subdirectory)
 FROM glob('s3://demo-ducklake-minio-bucket/**');
 
 --- This will show both minio-ducklake-demo.ducklake (and it's WAL file) and the minio relevant files, just to check it's actually local data

@@ -11,7 +11,7 @@ test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
 test-env DATA_PATH __TEST_DIR__
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/test_simple_macro');
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/test_simple_macro', CATALOG 'test');
 
 statement ok
 use ducklake
@@ -28,7 +28,7 @@ select simple(1)
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-(empty)	0	1	simple	1	NULL
+0	0	1	simple	1	NULL
 
 query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
@@ -75,8 +75,8 @@ select simple(1)
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-(empty)	0	1	simple	1	2
-(empty)	0	2	simple	3	NULL
+0	0	1	simple	1	2
+0	0	2	simple	3	NULL
 
 query II
 select snapshot_id, changes FROM snapshots()

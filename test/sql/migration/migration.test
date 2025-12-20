@@ -15,7 +15,7 @@ unzip data/old_ducklake/v03-dev1.db.gz __TEST_DIR__/v03-dev1.db
 foreach version v01 v02 v03-dev1
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/${version}.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_migrate_${version}', OVERRIDE_DATA_PATH TRUE)
+ATTACH 'ducklake:__TEST_DIR__/${version}.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_migrate_${version}', OVERRIDE_DATA_PATH TRUE, CATALOG 'test')
 
 statement ok
 INSERT INTO ducklake.test VALUES (42);
@@ -48,7 +48,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/${version}.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_migrate_${version}', OVERRIDE_DATA_PATH TRUE)
+ATTACH 'ducklake:__TEST_DIR__/${version}.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_migrate_${version}', OVERRIDE_DATA_PATH TRUE, CATALOG 'test')
 
 query I
 FROM ducklake.test
@@ -59,8 +59,8 @@ FROM ducklake.test
 query III
 FROM __ducklake_metadata_ducklake.ducklake_schema_versions;
 ----
-0	0	(empty)
-1	1	(empty)
+0	0	0
+1	1	0
 
 statement ok
 DETACH ducklake;

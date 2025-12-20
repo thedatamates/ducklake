@@ -23,7 +23,7 @@ statement ok
 DROP MACRO toDateTime;
 
 statement ok
-ATTACH 'ducklake:ducklake_clickbench.db' AS ducklake (DATA_PATH '/Users/holanda/Documents/Projects/ducklake/clickbench/')
+ATTACH 'ducklake:ducklake_clickbench.db' AS ducklake (DATA_PATH '/Users/holanda/Documents/Projects/ducklake/clickbench/', CATALOG 'test')
 
 statement ok
 COPY FROM DATABASE memory TO ducklake

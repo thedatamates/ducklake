@@ -40,7 +40,7 @@ SecretType DuckLakeSecret::GetSecretType() {
 CreateSecretFunction DuckLakeSecret::GetFunction() {
 	CreateSecretFunction function = {"ducklake", "config", CreateDuckLakeSecretFunction};
 	function.named_parameters["data_path"] = LogicalType::VARCHAR;
-	function.named_parameters["catalog_id"] = LogicalType::VARCHAR;
+	function.named_parameters["catalog"] = LogicalType::VARCHAR;
 	function.named_parameters["metadata_schema"] = LogicalType::VARCHAR;
 	function.named_parameters["metadata_catalog"] = LogicalType::VARCHAR;
 	function.named_parameters["metadata_path"] = LogicalType::VARCHAR;

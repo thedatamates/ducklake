@@ -1,20 +1,19 @@
 # name: test/sql/multi_catalog/catalog_isolation.test
-# description: test that multiple catalogs with different catalog_ids are isolated
+# description: test that multiple catalogs with different catalog names are isolated
 # group: [multi_catalog]
 
 require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
-
 test-env DATA_PATH __TEST_DIR__
 
-# Create shared metadata location that will be used by multiple catalogs
+# Test catalog isolation with separate metadata databases
+# (shared metadata requires a server-based database like PostgreSQL)
 
-# First catalog with catalog_id 'tenant_a'
+# First catalog with catalog name 'tenant_a'
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS tenant_a (DATA_PATH '${DATA_PATH}/tenant_a', CATALOG_ID 'tenant_a');
+ATTACH 'ducklake:__TEST_DIR__/tenant_a_meta.db' AS tenant_a (DATA_PATH '${DATA_PATH}/tenant_a', CATALOG 'tenant_a');
 
 statement ok
 USE tenant_a;
@@ -32,13 +31,9 @@ SELECT * FROM users ORDER BY id;
 1	Alice
 2	Bob
 
-# Detach and attach a second catalog with different catalog_id
+# Second catalog with catalog name 'tenant_b' (separate metadata database)
 statement ok
-USE memory;
-
-# Second catalog with catalog_id 'tenant_b' pointing to same metadata
-statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS tenant_b (DATA_PATH '${DATA_PATH}/tenant_b', CATALOG_ID 'tenant_b');
+ATTACH 'ducklake:__TEST_DIR__/tenant_b_meta.db' AS tenant_b (DATA_PATH '${DATA_PATH}/tenant_b', CATALOG 'tenant_b');
 
 statement ok
 USE tenant_b;
@@ -66,12 +61,6 @@ SELECT * FROM users ORDER BY id;
 
 # Go back to tenant_a and verify its data is unchanged
 statement ok
-USE memory;
-
-statement ok
-DETACH tenant_b;
-
-statement ok
 USE tenant_a;
 
 # tenant_a should still have its original data
@@ -87,9 +76,23 @@ SELECT COUNT(*) FROM users;
 ----
 2
 
+# Verify catalog_id in metadata tables
+query I
+SELECT DISTINCT catalog_id FROM __ducklake_metadata_tenant_a.ducklake_schema WHERE schema_name = 'main';
+----
+0
+
+query I
+SELECT DISTINCT catalog_id FROM __ducklake_metadata_tenant_b.ducklake_schema WHERE schema_name = 'main';
+----
+0
+
 # Clean up
 statement ok
 USE memory;
 
 statement ok
 DETACH tenant_a;
+
+statement ok
+DETACH tenant_b;

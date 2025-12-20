@@ -12,7 +12,7 @@ test-env DATA_PATH __TEST_DIR__
 
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_struct_evolution_alter_map_files')
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_struct_evolution_alter_map_files', CATALOG 'test')
 
 statement ok
 CREATE TABLE ducklake.test(col1 MAP(INT, STRUCT(i INT, j INT)));

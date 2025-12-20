@@ -682,7 +682,7 @@ vector<DuckLakeSchemaInfo> DuckLakeTransaction::GetNewSchemas(DuckLakeCommitStat
 		auto &schema_entry = entry.second->Cast<DuckLakeSchemaEntry>();
 		auto old_id = schema_entry.GetSchemaId();
 		DuckLakeSchemaInfo schema_info;
-		schema_info.id = SchemaIndex(commit_state.commit_snapshot.next_catalog_id++);
+		schema_info.id = SchemaIndex(commit_state.commit_snapshot.next_entry_id++);
 		schema_info.uuid = schema_entry.GetSchemaUUID();
 		schema_info.name = schema_entry.name;
 		schema_info.path = schema_entry.DataPath();
@@ -710,7 +710,7 @@ DuckLakePartitionInfo DuckLakeTransaction::GetNewPartitionKey(DuckLakeCommitStat
 		return partition_key;
 	}
 	auto local_partition_id = partition_data->partition_id;
-	auto partition_id = commit_state.commit_snapshot.next_catalog_id++;
+	auto partition_id = commit_state.commit_snapshot.next_entry_id++;
 	partition_key.id = partition_id;
 	partition_data->partition_id = partition_id;
 	for (auto &field : partition_data->fields) {
@@ -781,7 +781,7 @@ DuckLakeTableInfo DuckLakeTransaction::GetNewTable(DuckLakeCommitState &commit_s
 	auto original_id = table_entry.id;
 	bool is_new_table;
 	if (original_id.IsTransactionLocal()) {
-		table_entry.id = TableIndex(commit_state.commit_snapshot.next_catalog_id++);
+		table_entry.id = TableIndex(commit_state.commit_snapshot.next_entry_id++);
 		is_new_table = true;
 	} else {
 		// this table already has an id - keep it
@@ -953,7 +953,7 @@ DuckLakeViewInfo DuckLakeTransaction::GetNewView(DuckLakeCommitState &commit_sta
 	DuckLakeViewInfo view_entry;
 	auto original_id = view.GetViewId();
 	if (original_id.IsTransactionLocal()) {
-		view_entry.id = TableIndex(commit_state.commit_snapshot.next_catalog_id++);
+		view_entry.id = TableIndex(commit_state.commit_snapshot.next_entry_id++);
 	} else {
 		// this view already has an id - keep it
 		// this happens if e.g. this view is renamed
@@ -974,7 +974,7 @@ void DuckLakeTransaction::GetNewMacroInfo(DuckLakeCommitState &commit_state, ref
 	auto &macro_entry = entry.get().Cast<MacroCatalogEntry>();
 	auto &ducklake_schema = macro_entry.schema.Cast<DuckLakeSchemaEntry>();
 
-	new_macro_info.macro_id = MacroIndex(commit_state.commit_snapshot.next_catalog_id++);
+	new_macro_info.macro_id = MacroIndex(commit_state.commit_snapshot.next_entry_id++);
 	new_macro_info.macro_name = macro_entry.name;
 	new_macro_info.schema_id = ducklake_schema.GetSchemaId();
 	// Let's do the implementations
@@ -1786,15 +1786,17 @@ unique_ptr<QueryResult> DuckLakeTransaction::Query(string query) {
 	query = StringUtil::Replace(query, "{METADATA_SCHEMA_ESCAPED}", schema_identifier_escaped);
 	query = StringUtil::Replace(query, "{METADATA_PATH}", metadata_path);
 	query = StringUtil::Replace(query, "{DATA_PATH}", data_path);
-	auto catalog_id = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.CatalogId());
+	auto catalog_id = to_string(ducklake_catalog.CatalogId());
 	query = StringUtil::Replace(query, "{CATALOG_ID}", catalog_id);
+	auto catalog_name = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.CatalogName());
+	query = StringUtil::Replace(query, "{CATALOG_NAME}", catalog_name);
 	return connection.Query(query);
 }
 
 unique_ptr<QueryResult> DuckLakeTransaction::Query(DuckLakeSnapshot snapshot, string query) {
 	query = StringUtil::Replace(query, "{SNAPSHOT_ID}", to_string(snapshot.snapshot_id));
 	query = StringUtil::Replace(query, "{SCHEMA_VERSION}", to_string(snapshot.schema_version));
-	query = StringUtil::Replace(query, "{NEXT_CATALOG_ID}", to_string(snapshot.next_catalog_id));
+	query = StringUtil::Replace(query, "{NEXT_ENTRY_ID}", to_string(snapshot.next_entry_id));
 	query = StringUtil::Replace(query, "{NEXT_FILE_ID}", to_string(snapshot.next_file_id));
 	query = StringUtil::Replace(query, "{AUTHOR}", commit_info.author.ToSQLString());
 	query = StringUtil::Replace(query, "{COMMIT_MESSAGE}", commit_info.commit_message.ToSQLString());

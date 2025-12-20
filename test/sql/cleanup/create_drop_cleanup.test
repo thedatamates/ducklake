@@ -12,7 +12,7 @@ test-env DATA_PATH __TEST_DIR__
 
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_createq_drop_cleanup')
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_createq_drop_cleanup', CATALOG 'test')
 
 statement ok
 BEGIN
@@ -24,7 +24,7 @@ statement ok
 INSERT INTO ducklake.tbl VALUES (42);
 
 query I
-SELECT COUNT(*) FROM glob('${DATA_PATH}/ducklake_createq_drop_cleanup/main/tbl/*.parquet')
+SELECT COUNT(*) FROM glob('${DATA_PATH}/ducklake_createq_drop_cleanup/test/main/tbl/*.parquet')
 ----
 1
 
@@ -32,7 +32,7 @@ statement ok
 DROP TABLE ducklake.tbl
 
 query I
-SELECT COUNT(*) FROM glob('${DATA_PATH}/ducklake_createq_drop_cleanup/main/tbl/*.parquet')
+SELECT COUNT(*) FROM glob('${DATA_PATH}/ducklake_createq_drop_cleanup/test/main/tbl/*.parquet')
 ----
 0
 

@@ -1,6 +1,6 @@
 {
   "description": "Run on DuckLake database as storage.",
-  "on_init": "ATTACH 'ducklake:{TEST_DIR}/{BASE_TEST_NAME}__ducklake.db' AS dl; SET timezone = 'UTC';",
+  "on_init": "ATTACH 'ducklake:{TEST_DIR}/{BASE_TEST_NAME}__ducklake.db' AS dl (CATALOG 'test'); SET timezone = 'UTC';",
   "on_new_connection": "USE dl;",
   "skip_compiled": "true",
   "sort_style": "rowsort",
