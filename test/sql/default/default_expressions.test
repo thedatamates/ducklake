@@ -72,14 +72,14 @@ FROM t_2
 query IIIII
 SELECT table_id, column_id, default_value, default_value_type, default_value_dialect FROM xx.ducklake_column
 ----
-1	1	NULL	literal	duckdb
-1	2	now()	expression	duckdb
 2	1	NULL	literal	duckdb
-2	2	1	literal	duckdb
-2	2	round(pi())	expression	duckdb
+2	2	now()	expression	duckdb
 3	1	NULL	literal	duckdb
-3	2	NULL	literal	duckdb
-3	2	random()	literal	duckdb
+3	2	1	literal	duckdb
+3	2	round(pi())	expression	duckdb
+4	1	NULL	literal	duckdb
+4	2	NULL	literal	duckdb
+4	2	random()	literal	duckdb
 
 statement error
 ALTER TABLE t_2 ADD COLUMN j INTEGER DEFAULT RANDOM()

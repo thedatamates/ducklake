@@ -100,8 +100,8 @@ COMMIT
 query II
 SELECT snapshot_id, changes FROM ducklake.snapshots() WHERE snapshot_id IN (2, 12) ORDER BY snapshot_id
 ----
-2	{inlined_insert=[1]}
-12	{flushed_inlined=[1]}
+2	{inlined_insert=[2]}
+12	{flushed_inlined=[2]}
 
 # we now have one file
 query I

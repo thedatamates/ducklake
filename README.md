@@ -74,21 +74,23 @@ DATA_PATH/
 ## Design Assumptions
 
 1. **Catalog Name Uniqueness** - Catalog names are unique within a metadata database (enforced by UNIQUE constraint)
-2. **Catalog ID Assignment** - First catalog gets `catalog_id = 0`, subsequent catalogs get incrementing IDs (never reused)
-3. **Data Path Isolation** - Each catalog's data is stored in `DATA_PATH/catalog_name/`
-4. **Metadata Isolation** - All metadata queries filter by `catalog_id`
-5. **Snapshot Independence** - Each catalog has its own snapshot sequence (`snapshot_id` unique per catalog, not globally)
-6. **File-Based DuckDB Limitation** - Cannot attach same DuckDB file as metadata for multiple catalogs (use PostgreSQL for shared metadata)
+2. **Unified ID Counter** - All entity IDs (catalogs, schemas, tables, views, macros, partitions) come from a single `next_catalog_id` counter
+3. **Initial ID Allocation** - First catalog gets `catalog_id = 0`, main schema gets `schema_id = 1`, `next_catalog_id` starts at 2
+4. **Data Path Isolation** - Each catalog's data is stored in `DATA_PATH/catalog_name/`
+5. **Metadata Isolation** - All metadata queries filter by `catalog_id`
+6. **Snapshot Independence** - Each catalog has its own snapshot sequence (`snapshot_id` unique per catalog, not globally)
+7. **File-Based DuckDB Limitation** - Cannot attach same DuckDB file as metadata for multiple catalogs (use PostgreSQL for shared metadata)
 
 ## Version Compatibility
 
-| DuckLake Version | Catalog Support | Migration |
-|------------------|-----------------|-----------|
-| 0.1 - 0.3 | None | MigrateV01-V03 + V04 |
-| 0.4-dev1 | VARCHAR catalog_id | MigrateV04 |
-| 0.5-dev1 | BIGINT catalog_id | Current |
+| DuckLake Version | Catalog Support | Migration Path |
+|------------------|-----------------|----------------|
+| 0.1 | None | V01 → V02 → V03 → V04 |
+| 0.2 | None | V02 → V03 → V04 |
+| 0.3 | None | V03 → V04 |
+| 0.4-dev1 | BIGINT catalog_id | Current (no migration) |
 
-Migration is automatic when `MIGRATE_IF_REQUIRED = true` (default).
+Migration is automatic when `MIGRATE_IF_REQUIRED = true` (default). MigrateV03 is upstream code (adds macro support), MigrateV04 is our fork (adds catalog_id columns).
 
 ---
 

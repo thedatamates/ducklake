@@ -11,7 +11,7 @@ The CATALOG refactor is complete with the following implemented:
 - [x] `CATALOG 'name'` option replaces `CATALOG_ID 'string'`
 - [x] `catalog_id` is now BIGINT (not VARCHAR)
 - [x] `ducklake_catalog` table stores catalog metadata
-- [x] `next_catalog_id` renamed to `next_entry_id`
+- [x] All entity IDs (catalog_id, schema_id, table_id, etc.) come from unified `next_catalog_id` counter
 - [x] All SELECT queries filter by `catalog_id`
 - [x] Catalog lookup by name (`LookupCatalogByName`)
 - [x] Auto-create catalogs with proper ID sequencing (`CreateCatalog`)
@@ -20,7 +20,7 @@ The CATALOG refactor is complete with the following implemented:
 - [x] Multi-catalog isolation in table sizes (`GetTableSizes`)
 - [x] Multi-catalog isolation in conflict detection (`GetFilesDeletedOrDroppedAfterSnapshot`)
 - [x] Per-catalog snapshot expiration (`expire_snapshots`)
-- [x] All 247 tests pass
+- [x] All 243 tests pass (11 skipped due to missing extensions)
 
 ---
 
@@ -213,17 +213,19 @@ if (catalog_id.IsValid()) {
 ```
 
 **What `CreateCatalog` does:**
-1. Computes next available `catalog_id` (MAX + 1)
-2. Computes next available `snapshot_id` (MAX + 1)
-3. Computes next available `entry_id` for the 'main' schema
-4. Computes next available `file_id` to avoid conflicts
-5. Inserts into `ducklake_catalog`
-6. Inserts initial 'main' schema into `ducklake_schema`
-7. Inserts initial snapshot into `ducklake_snapshot`
-8. Inserts snapshot changes into `ducklake_snapshot_changes`
-9. Inserts schema version into `ducklake_schema_versions`
+1. Gets next available ID from `MAX(next_catalog_id)` across all snapshots
+2. Assigns `new_catalog_id` from that counter
+3. Assigns `main_schema_id = new_catalog_id + 1`
+4. Sets `next_catalog_id = new_catalog_id + 2` for future entities
+5. Computes next available `snapshot_id` (MAX + 1)
+6. Computes next available `file_id` to avoid conflicts
+7. Inserts into `ducklake_catalog`
+8. Inserts initial 'main' schema into `ducklake_schema`
+9. Inserts initial snapshot into `ducklake_snapshot`
+10. Inserts snapshot changes into `ducklake_snapshot_changes`
+11. Inserts schema version into `ducklake_schema_versions`
 
-This ensures new catalogs get properly sequenced IDs that don't conflict with existing catalogs.
+This ensures all entity IDs (catalogs, schemas, tables, views, macros, partitions) come from the same unified counter and never conflict.
 
 ### Catalog ID Design
 
@@ -248,11 +250,24 @@ All queries use placeholders that are replaced at runtime:
 - `{CATALOG_NAME}` → SQL-quoted catalog name string
 - `{METADATA_CATALOG}` → Schema prefix for metadata tables
 - `{SNAPSHOT_ID}` → Current snapshot ID
-- `{NEXT_ENTRY_ID}` → Next ID for schemas/tables/views/macros
+- `{NEXT_CATALOG_ID}` → Next ID for catalogs/schemas/tables/views/macros
 
-### Snapshot Counter
+### Unified ID Counter (`next_catalog_id`)
 
-The `ducklake_snapshot` table has a `next_entry_id` column (renamed from `next_catalog_id` for clarity) that generates sequential IDs for schemas, tables, views, macros, and partitions.
+The `ducklake_snapshot` table has a `next_catalog_id` column that generates sequential IDs for ALL entities:
+- Catalogs
+- Schemas
+- Tables
+- Views
+- Macros
+- Partitions
+
+**Initial state for a new DuckLake:**
+- `catalog_id = 0`
+- `main schema_id = 1`
+- `next_catalog_id = 2`
+
+**Why unified counter?** This is upstream DuckLake's design. The column is named `next_catalog_id` but it generates IDs for all entity types. This prevents ID collisions when multiple entity types are created in the same transaction.
 
 ### Tables That NEED catalog_id Filtering
 
@@ -295,12 +310,17 @@ ATTACH 'ducklake:old_catalog.db' AS lake (
     DATA_PATH '/existing/data/',
     CATALOG 'migrated-catalog'
 );
--- MigrateV04 runs automatically:
--- 1. Creates ducklake_catalog table
--- 2. Inserts catalog record with catalog_id = 0
--- 3. Adds catalog_id BIGINT column to all tables
--- 4. Renames next_catalog_id → next_entry_id
 ```
+
+**Migration chain when loading a version 0.3 database:**
+1. `MigrateV03()` - Upstream's migration (adds macro tables)
+2. `MigrateV04()` - Our fork's migration:
+   - Creates `ducklake_catalog` table
+   - Inserts catalog record with `catalog_id = 0`
+   - Adds `catalog_id BIGINT` column to all 10 tables
+   - Updates version to `0.4-dev1`
+
+**Note:** MigrateV03 is upstream code that doesn't update the version number. MigrateV04 runs immediately after and sets the version to `0.4-dev1`.
 
 **Note:** Migrated databases have `catalog_id` as the LAST column (ALTER TABLE behavior), while new databases have it FIRST. This is handled transparently via explicit column names in all INSERT statements.
 
@@ -375,7 +395,7 @@ WHERE c.catalog_name = 'my-catalog'
 | File | Changes |
 |------|---------|
 | `src/include/common/ducklake_options.hpp` | `catalog_name` string, `catalog_id` idx_t (BIGINT) |
-| `src/include/common/ducklake_snapshot.hpp` | Renamed `next_catalog_id` → `next_entry_id` |
+| `src/include/common/ducklake_snapshot.hpp` | `next_catalog_id` used for all entity IDs including catalogs |
 | `src/include/storage/ducklake_catalog.hpp` | `CatalogId()` returns idx_t, added `CatalogName()` |
 | `src/storage/ducklake_storage.cpp` | Parse `CATALOG` option |
 | `src/storage/ducklake_transaction.cpp` | `{CATALOG_ID}` as integer, `{CATALOG_NAME}` as string |
@@ -406,18 +426,20 @@ WHERE c.catalog_name = 'my-catalog'
 
 | Version | Changes |
 |---------|---------|
-| 0.5-dev1 | Added catalog-based multi-tenant isolation with BIGINT catalog_id |
-| 0.4-dev1 | Upstream DuckLake version |
+| 0.4-dev1 | Fork: Added catalog-based multi-tenant isolation with BIGINT catalog_id |
+| 0.3 | Upstream DuckLake version |
 
 ---
 
 ## Testing Checklist
 
 ### Unit Tests (Done)
-- [x] All 243 existing tests pass
+- [x] All 243 tests pass (11 skipped due to missing extensions: httpfs, spatial)
 - [x] CATALOG option parsing
 - [x] catalog_id BIGINT in schema
 - [x] catalog_id filtering in queries
+- [x] Unified ID counter (catalog_id=0, schema_id=1, next_catalog_id=2)
+- [x] Migration from version 0.3 (MigrateV03 + MigrateV04)
 
 ### Integration Tests (TODO)
 - [ ] PostgreSQL multi-tenant isolation

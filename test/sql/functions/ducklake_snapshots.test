@@ -42,9 +42,9 @@ SELECT snapshot_id, schema_version, changes FROM ducklake.snapshots()
 0	0	{schemas_created=[main]}
 1	1	{schemas_created=[s1]}
 2	2	{tables_created=[s1.tbl]}
-3	2	{tables_inserted_into=[2]}
-4	3	{tables_dropped=[2]}
-5	4	{schemas_dropped=[1]}
+3	2	{tables_inserted_into=[3]}
+4	3	{tables_dropped=[3]}
+5	4	{schemas_dropped=[2]}
 
 # this transaction does nothing in a round-about way
 # no snapshot is created here
@@ -92,7 +92,7 @@ COMMIT
 query III
 SELECT snapshot_id, schema_version, changes FROM ducklake.snapshots() WHERE snapshot_id=6
 ----
-6	5	{schemas_created=[s1], tables_created=[s1.tbl], tables_inserted_into=[4]}
+6	5	{schemas_created=[s1], tables_created=[s1.tbl], tables_inserted_into=[5]}
 
 # alter table
 statement ok
@@ -101,7 +101,7 @@ ALTER TABLE ducklake.s1.tbl SET PARTITIONED BY (i)
 query III
 SELECT snapshot_id, schema_version, changes FROM ducklake.snapshots() WHERE snapshot_id=7
 ----
-7	6	{tables_altered=[4]}
+7	6	{tables_altered=[5]}
 
 # create a table and alter it
 statement ok
@@ -119,7 +119,7 @@ COMMIT
 query III
 SELECT snapshot_id, schema_version, changes FROM ducklake.snapshots() WHERE snapshot_id=8
 ----
-8	7	{tables_created=[s1.tbl2], tables_altered=[6]}
+8	7	{tables_created=[s1.tbl2], tables_altered=[7]}
 
 # create a view
 statement ok
@@ -136,7 +136,7 @@ DROP VIEW ducklake.v1
 query III
 SELECT snapshot_id, schema_version, changes FROM ducklake.snapshots() WHERE snapshot_id=10
 ----
-10	9	{views_dropped=[8]}
+10	9	{views_dropped=[9]}
 
 # comments
 statement ok
@@ -148,7 +148,7 @@ COMMENT ON VIEW ducklake.comment_view IS 'con1'
 query III
 SELECT snapshot_id, schema_version, changes FROM ducklake.snapshots() WHERE snapshot_id=12
 ----
-12	11	{views_altered=[9]}
+12	11	{views_altered=[10]}
 
 # deletes
 statement ok
@@ -157,4 +157,4 @@ DELETE FROM ducklake.s1.tbl
 query III
 SELECT snapshot_id, schema_version, changes FROM ducklake_snapshots('ducklake') WHERE snapshot_id=13
 ----
-13	11	{tables_deleted_from=[4]}
+13	11	{tables_deleted_from=[5]}

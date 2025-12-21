@@ -27,37 +27,37 @@ CREATE MACRO multi_add
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	0	1	multi_add	1	NULL
+0	1	2	multi_add	1	NULL
 
 query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-1	0	duckdb	0	scalar
-1	1	duckdb	a	scalar
-1	2	duckdb	(a + b)	scalar
-1	3	duckdb	((a + b) + c)	scalar
-1	4	duckdb	(((a + b) + c) + d)	scalar
-1	5	duckdb	((((a + b) + c) + d) + e)	scalar
+2	0	duckdb	0	scalar
+2	1	duckdb	a	scalar
+2	2	duckdb	(a + b)	scalar
+2	3	duckdb	((a + b) + c)	scalar
+2	4	duckdb	(((a + b) + c) + d)	scalar
+2	5	duckdb	((((a + b) + c) + d) + e)	scalar
 
 
 query IIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-1	1	0	a	unknown	NULL	unknown
-1	2	0	a	unknown	NULL	unknown
-1	2	1	b	unknown	NULL	unknown
-1	3	0	a	unknown	NULL	unknown
-1	3	1	b	unknown	NULL	unknown
-1	3	2	c	unknown	NULL	unknown
-1	4	0	a	unknown	NULL	unknown
-1	4	1	b	unknown	NULL	unknown
-1	4	2	c	unknown	NULL	unknown
-1	4	3	d	unknown	NULL	unknown
-1	5	0	a	unknown	NULL	unknown
-1	5	1	b	unknown	NULL	unknown
-1	5	2	c	unknown	NULL	unknown
-1	5	3	d	unknown	NULL	unknown
-1	5	4	e	unknown	NULL	unknown
+2	1	0	a	unknown	NULL	unknown
+2	2	0	a	unknown	NULL	unknown
+2	2	1	b	unknown	NULL	unknown
+2	3	0	a	unknown	NULL	unknown
+2	3	1	b	unknown	NULL	unknown
+2	3	2	c	unknown	NULL	unknown
+2	4	0	a	unknown	NULL	unknown
+2	4	1	b	unknown	NULL	unknown
+2	4	2	c	unknown	NULL	unknown
+2	4	3	d	unknown	NULL	unknown
+2	5	0	a	unknown	NULL	unknown
+2	5	1	b	unknown	NULL	unknown
+2	5	2	c	unknown	NULL	unknown
+2	5	3	d	unknown	NULL	unknown
+2	5	4	e	unknown	NULL	unknown
 
 query I
 SELECT multi_add();

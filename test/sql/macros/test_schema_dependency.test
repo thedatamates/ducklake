@@ -31,8 +31,8 @@ CREATE MACRO test.xt(a,_name) as TABLE SELECT * FROM test.test_tbl WHERE(id>=a o
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	2	simple	2	NULL
-0	1	4	xt	4	NULL
+0	2	3	simple	2	NULL
+0	2	5	xt	4	NULL
 
 statement ok
 DROP SCHEMA test CASCADE;
@@ -41,5 +41,5 @@ DROP SCHEMA test CASCADE;
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	2	simple	2	5
-0	1	4	xt	4	5
+0	2	3	simple	2	5
+0	2	5	xt	4	5

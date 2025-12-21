@@ -28,17 +28,17 @@ select simple(1)
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	0	1	simple	1	NULL
+0	1	2	simple	1	NULL
 
 query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-1	0	duckdb	a	scalar
+2	0	duckdb	a	scalar
 
 query IIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-1	0	0	a	unknown	NULL	unknown
+2	0	0	a	unknown	NULL	unknown
 
 statement ok
 drop macro simple;
@@ -59,7 +59,7 @@ select snapshot_id, changes FROM snapshots()
 ----
 0	{schemas_created=[main]}
 1	{scalar_macros_created=['main."simple"']}
-2	{scalar_macros_dropped=[1]}
+2	{scalar_macros_dropped=[2]}
 
 # We can recreate it and that's fine
 
@@ -75,15 +75,15 @@ select simple(1)
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	0	1	simple	1	2
-0	0	2	simple	3	NULL
+0	1	2	simple	1	2
+0	1	3	simple	3	NULL
 
 query II
 select snapshot_id, changes FROM snapshots()
 ----
 0	{schemas_created=[main]}
 1	{scalar_macros_created=['main."simple"']}
-2	{scalar_macros_dropped=[1]}
+2	{scalar_macros_dropped=[2]}
 3	{scalar_macros_created=['main."simple"']}
 
 statement error

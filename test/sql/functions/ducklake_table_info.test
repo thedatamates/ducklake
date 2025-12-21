@@ -25,4 +25,4 @@ DELETE FROM ducklake.test WHERE i%2=0
 query IIIIIII
 SELECT table_name, schema_id, table_id, file_count, file_size_bytes > 0, delete_file_count, delete_file_size_bytes > 0 FROM ducklake.table_info();
 ----
-test	0	1	1	true	1	true
+test	1	2	1	true	1	true

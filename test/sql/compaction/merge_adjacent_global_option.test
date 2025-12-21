@@ -70,16 +70,16 @@ INSERT INTO s1.example_3 (key, value) VALUES ('baz', 'qux');
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-0	1
-1	1
-2	2
-3	2
-4	4
-5	4
-6	5
-7	5
-8	6
-9	6
+0	2
+1	2
+2	3
+3	3
+4	5
+5	5
+6	6
+7	6
+8	7
+9	7
 
 # We define a table_name but not a schema name so we should be able to merge from example_2
 statement ok
@@ -101,14 +101,14 @@ CALL ducklake_merge_adjacent_files('ducklake');
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-0	1
-1	1
-4	4
-5	4
-8	6
-9	6
-10	2
-11	5
+0	2
+1	2
+4	5
+5	5
+8	7
+9	7
+10	3
+11	6
 
 # We can set a whole schema
 statement ok
@@ -120,9 +120,9 @@ CALL ducklake_merge_adjacent_files('ducklake');
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-0	1
-1	1
-10	2
-11	5
-12	4
-13	6
+0	2
+1	2
+10	3
+11	6
+12	5
+13	7

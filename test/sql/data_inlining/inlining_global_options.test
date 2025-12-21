@@ -83,11 +83,11 @@ CALL ducklake.set_option('auto_compact', true, schema=> 'main', table_name =>'ex
 statement ok
 CALL ducklake_flush_inlined_data('ducklake');
 
-# We write a new file for table id 2
+# We write a new file for table id 3
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-10	2
+10	3
 
 statement ok
 CALL ducklake.set_option('auto_compact', true, schema=> 's1', table_name =>'example_2')
@@ -98,8 +98,8 @@ CALL ducklake_flush_inlined_data('ducklake');
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-10	2
-11	5
+10	3
+11	6
 
 statement ok
 CALL ducklake.set_option('auto_compact', true, schema=> 's1')
@@ -110,10 +110,10 @@ CALL ducklake_flush_inlined_data('ducklake');
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-10	2
-11	5
-12	4
-13	6
+10	3
+11	6
+12	5
+13	7
 
 statement ok
 CALL ducklake.set_option('auto_compact', true, schema=> 'main')
@@ -124,8 +124,8 @@ CALL ducklake_flush_inlined_data('ducklake');
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-10	2
-11	5
-12	4
-13	6
-14	1
+10	3
+11	6
+12	5
+13	7
+14	2

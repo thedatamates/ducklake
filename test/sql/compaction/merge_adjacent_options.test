@@ -61,45 +61,45 @@ INSERT INTO s1.example_2 (key, value) VALUES ('baz', 'qux');
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-0	1
-1	1
-2	2
-3	2
-4	4
-5	4
-6	5
-7	5
+0	2
+1	2
+2	3
+3	3
+4	5
+5	5
+6	6
+7	6
 
 # We define a table_name but not a schema name so we should be able to merge from example_2
 statement ok
 CALL ducklake_merge_adjacent_files('ducklake', 'example_2');
 
-# We write a new file for table id 2
+# We write a new file for table id 3
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-0	1
-1	1
-4	4
-5	4
-6	5
-7	5
-8	2
+0	2
+1	2
+4	5
+5	5
+6	6
+7	6
+8	3
 
 
-# If we define the schema we do table id 5
+# If we define the schema we do table id 6
 statement ok
 CALL ducklake_merge_adjacent_files('ducklake', 'example_2', schema=>'s1');
 
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-0	1
-1	1
-4	4
-5	4
-8	2
-9	5
+0	2
+1	2
+4	5
+5	5
+8	3
+9	6
 
 # If we call with nothing, all tables, schemas go in, so we compress both remaining tables
 statement ok
@@ -108,10 +108,10 @@ CALL ducklake_merge_adjacent_files('ducklake');
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-8	2
-9	5
-10	1
-11	4
+8	3
+9	6
+10	2
+11	5
 
 statement error
 CALL ducklake_merge_adjacent_files('ducklake', 'example_2', schema=>'bogus');

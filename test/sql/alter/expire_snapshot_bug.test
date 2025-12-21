@@ -34,9 +34,9 @@ SELECT snapshot_id, changes FROM snapshots();
 ----
 0	{schemas_created=[main]}
 1	{tables_created=[main.a]}
-2	{tables_inserted_into=[1]}
+2	{tables_inserted_into=[2]}
 3	{tables_created=[main.b]}
-4	{tables_inserted_into=[1]}
+4	{tables_inserted_into=[2]}
 
 statement ok
 CALL ducklake_expire_snapshots('ducklake', versions => [0,1,2])
@@ -62,7 +62,7 @@ alter table b rename to c;
 query II
 SELECT snapshot_id, changes FROM snapshots();
 ----
-4	{tables_inserted_into=[1]}
+4	{tables_inserted_into=[2]}
 5	{tables_created=[main.c]}
 
 query I
