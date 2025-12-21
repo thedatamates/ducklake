@@ -174,22 +174,35 @@ ALTER TABLE {METADATA_CATALOG}.ducklake_column ADD COLUMN {IF_NOT_EXISTS} defaul
 }
 
 void DuckLakeMetadataManager::MigrateV04(bool allow_failures) {
-	string migrate_query = R"(
+	auto result = transaction.Query("SELECT COALESCE(MAX(next_catalog_id), 0) FROM {METADATA_CATALOG}.ducklake_snapshot");
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to get next_catalog_id for migration: ");
+	}
+	auto chunk = result->Fetch();
+	idx_t new_catalog_id = chunk->GetValue(0, 0).GetValue<idx_t>();
+
+	string migrate_query = StringUtil::Format(R"(
 CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_catalog(catalog_id BIGINT PRIMARY KEY, catalog_name VARCHAR NOT NULL UNIQUE, created_snapshot BIGINT NOT NULL);
-INSERT INTO {METADATA_CATALOG}.ducklake_catalog (catalog_id, catalog_name, created_snapshot) VALUES ({CATALOG_ID}, {CATALOG_NAME}, 0) ON CONFLICT DO NOTHING;
-ALTER TABLE {METADATA_CATALOG}.ducklake_snapshot ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT {CATALOG_ID};
-ALTER TABLE {METADATA_CATALOG}.ducklake_snapshot_changes ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT {CATALOG_ID};
-ALTER TABLE {METADATA_CATALOG}.ducklake_schema ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT {CATALOG_ID};
-ALTER TABLE {METADATA_CATALOG}.ducklake_table ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT {CATALOG_ID};
-ALTER TABLE {METADATA_CATALOG}.ducklake_view ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT {CATALOG_ID};
-ALTER TABLE {METADATA_CATALOG}.ducklake_table_stats ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT {CATALOG_ID};
-ALTER TABLE {METADATA_CATALOG}.ducklake_partition_info ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT {CATALOG_ID};
-ALTER TABLE {METADATA_CATALOG}.ducklake_files_scheduled_for_deletion ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT {CATALOG_ID};
-ALTER TABLE {METADATA_CATALOG}.ducklake_schema_versions ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT {CATALOG_ID};
-ALTER TABLE {METADATA_CATALOG}.ducklake_macro ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT {CATALOG_ID};
+INSERT INTO {METADATA_CATALOG}.ducklake_catalog (catalog_id, catalog_name, created_snapshot) VALUES (%llu, {CATALOG_NAME}, 0) ON CONFLICT DO NOTHING;
+ALTER TABLE {METADATA_CATALOG}.ducklake_snapshot ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT %llu;
+ALTER TABLE {METADATA_CATALOG}.ducklake_snapshot_changes ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT %llu;
+ALTER TABLE {METADATA_CATALOG}.ducklake_schema ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT %llu;
+ALTER TABLE {METADATA_CATALOG}.ducklake_table ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT %llu;
+ALTER TABLE {METADATA_CATALOG}.ducklake_view ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT %llu;
+ALTER TABLE {METADATA_CATALOG}.ducklake_table_stats ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT %llu;
+ALTER TABLE {METADATA_CATALOG}.ducklake_partition_info ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT %llu;
+ALTER TABLE {METADATA_CATALOG}.ducklake_files_scheduled_for_deletion ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT %llu;
+ALTER TABLE {METADATA_CATALOG}.ducklake_schema_versions ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT %llu;
+ALTER TABLE {METADATA_CATALOG}.ducklake_macro ADD COLUMN {IF_NOT_EXISTS} catalog_id BIGINT DEFAULT %llu;
+UPDATE {METADATA_CATALOG}.ducklake_snapshot SET next_catalog_id = %llu WHERE next_catalog_id <= %llu;
 UPDATE {METADATA_CATALOG}.ducklake_metadata SET value = '0.4-dev1' WHERE key = 'version';
-	)";
+	)", new_catalog_id, new_catalog_id, new_catalog_id, new_catalog_id, new_catalog_id, new_catalog_id,
+	    new_catalog_id, new_catalog_id, new_catalog_id, new_catalog_id, new_catalog_id,
+	    new_catalog_id + 1, new_catalog_id);
 	ExecuteMigration(migrate_query, allow_failures);
+
+	auto &ducklake_catalog = transaction.GetCatalog();
+	ducklake_catalog.SetCatalogId(new_catalog_id);
 }
 
 DuckLakeMetadata DuckLakeMetadataManager::LoadDuckLake() {

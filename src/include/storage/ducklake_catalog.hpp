@@ -59,6 +59,9 @@ public:
 	idx_t CatalogId() const {
 		return options.catalog_id;
 	}
+	void SetCatalogId(idx_t id) {
+		options.catalog_id = id;
+	}
 	const string &CatalogName() const {
 		return options.catalog_name;
 	}

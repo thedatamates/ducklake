@@ -315,12 +315,16 @@ ATTACH 'ducklake:old_catalog.db' AS lake (
 **Migration chain when loading a version 0.3 database:**
 1. `MigrateV03()` - Upstream's migration (adds macro tables)
 2. `MigrateV04()` - Our fork's migration:
+   - Queries `MAX(next_catalog_id)` from existing snapshots to get next available ID
    - Creates `ducklake_catalog` table
-   - Inserts catalog record with `catalog_id = 0`
-   - Adds `catalog_id BIGINT` column to all 10 tables
+   - Inserts catalog record with the computed `catalog_id`
+   - Adds `catalog_id BIGINT` column to all 10 tables with that ID as default
+   - Updates `next_catalog_id` to `catalog_id + 1` in all snapshots
    - Updates version to `0.4-dev1`
 
 **Note:** MigrateV03 is upstream code that doesn't update the version number. MigrateV04 runs immediately after and sets the version to `0.4-dev1`.
+
+**Note:** For migrated databases, the catalog_id will be equal to the highest entity ID that existed before migration (typically 2 if the database had a main schema and one table). This ensures the unified ID counter remains consistent.
 
 **Note:** Migrated databases have `catalog_id` as the LAST column (ALTER TABLE behavior), while new databases have it FIRST. This is handled transparently via explicit column names in all INSERT statements.
 
