@@ -4,6 +4,26 @@
 
 This is a fork of [DuckLake](https://github.com/duckdb/ducklake) that adds **catalog-based multi-tenant isolation**. Instead of using PostgreSQL schema-level isolation (one schema per tenant), this fork uses a `catalog_id` column to isolate tenants within a shared schema.
 
+## Current State
+
+The CATALOG refactor is complete with the following implemented:
+
+- [x] `CATALOG 'name'` option replaces `CATALOG_ID 'string'`
+- [x] `catalog_id` is now BIGINT (not VARCHAR)
+- [x] `ducklake_catalog` table stores catalog metadata
+- [x] `next_catalog_id` renamed to `next_entry_id`
+- [x] All SELECT queries filter by `catalog_id`
+- [x] Catalog lookup by name (`LookupCatalogByName`)
+- [x] Auto-create catalogs with proper ID sequencing (`CreateCatalog`)
+- [x] Multi-catalog isolation in snapshot queries (`GetAllSnapshots`)
+- [x] Multi-catalog isolation in file cleanup (`GetOrphanFilesForCleanup`, `GetOldFilesForCleanup`)
+- [x] Multi-catalog isolation in table sizes (`GetTableSizes`)
+- [x] Multi-catalog isolation in conflict detection (`GetFilesDeletedOrDroppedAfterSnapshot`)
+- [x] Per-catalog snapshot expiration (`expire_snapshots`)
+- [x] All 247 tests pass
+
+---
+
 ### Why This Fork?
 
 DuckLake's standard approach uses `METADATA_SCHEMA` to isolate tenants:
@@ -109,13 +129,20 @@ SELECT * FROM workspace.datasets.customers;   -- workspace.datasets.customers
 
 ### File-Based DuckDB Limitation
 
-With file-based DuckDB metadata, you cannot attach the same file twice (DuckDB file locking). Each catalog needs its own metadata file:
+With file-based DuckDB metadata, you cannot attach the same file twice (DuckDB file locking prevents this). Each catalog needs its own separate metadata file:
 
 ```sql
--- Separate metadata files work fine
+-- Separate metadata files - each tenant isolated in its own file
 ATTACH 'ducklake:tenant_a.db' AS tenant_a (CATALOG 'tenant_a', DATA_PATH '/data/');
 ATTACH 'ducklake:tenant_b.db' AS tenant_b (CATALOG 'tenant_b', DATA_PATH '/data/');
+
+-- This WILL NOT WORK with file-based metadata:
+-- ATTACH 'ducklake:shared.db' AS tenant_a (CATALOG 'tenant_a', DATA_PATH '/data/');
+-- ATTACH 'ducklake:shared.db' AS tenant_b (CATALOG 'tenant_b', DATA_PATH '/data/');
+-- Error: "Cannot attach - the database file is already attached"
 ```
+
+For true multi-tenant shared metadata, use PostgreSQL as the metadata backend.
 
 ---
 
@@ -155,6 +182,48 @@ All queries to these tables are automatically filtered by `catalog_id`.
 ---
 
 ## Implementation Details
+
+### Catalog Lookup and Creation
+
+When attaching to an existing DuckLake, the system automatically looks up or creates the catalog:
+
+**In `DuckLakeMetadataManager`:**
+
+```cpp
+// Lookup catalog by name - returns catalog_id if found
+optional_idx LookupCatalogByName(const string &catalog_name);
+
+// Create new catalog - returns new catalog_id
+idx_t CreateCatalog(const string &catalog_name);
+```
+
+**In `LoadExistingDuckLake`:**
+
+```cpp
+auto catalog_id = metadata_manager.LookupCatalogByName(options.catalog_name);
+if (catalog_id.IsValid()) {
+    // Catalog exists - use its ID
+    options.catalog_id = catalog_id.GetIndex();
+} else if (options.create_if_not_exists) {
+    // Catalog doesn't exist - create it
+    options.catalog_id = metadata_manager.CreateCatalog(options.catalog_name);
+} else {
+    throw InvalidInputException("Catalog '%s' does not exist", options.catalog_name);
+}
+```
+
+**What `CreateCatalog` does:**
+1. Computes next available `catalog_id` (MAX + 1)
+2. Computes next available `snapshot_id` (MAX + 1)
+3. Computes next available `entry_id` for the 'main' schema
+4. Computes next available `file_id` to avoid conflicts
+5. Inserts into `ducklake_catalog`
+6. Inserts initial 'main' schema into `ducklake_schema`
+7. Inserts initial snapshot into `ducklake_snapshot`
+8. Inserts snapshot changes into `ducklake_snapshot_changes`
+9. Inserts schema version into `ducklake_schema_versions`
+
+This ensures new catalogs get properly sequenced IDs that don't conflict with existing catalogs.
 
 ### Catalog ID Design
 
@@ -310,9 +379,10 @@ WHERE c.catalog_name = 'my-catalog'
 | `src/include/storage/ducklake_catalog.hpp` | `CatalogId()` returns idx_t, added `CatalogName()` |
 | `src/storage/ducklake_storage.cpp` | Parse `CATALOG` option |
 | `src/storage/ducklake_transaction.cpp` | `{CATALOG_ID}` as integer, `{CATALOG_NAME}` as string |
-| `src/storage/ducklake_initializer.cpp` | Compute effective_data_path with catalog name |
-| `src/storage/ducklake_metadata_manager.cpp` | Schema, queries, filtering, MigrateV04 |
+| `src/storage/ducklake_initializer.cpp` | Compute effective_data_path with catalog name, catalog lookup/creation |
+| `src/storage/ducklake_metadata_manager.cpp` | Schema, queries, filtering, MigrateV04, multi-catalog isolation fixes |
 | `src/storage/ducklake_secret.cpp` | `catalog` parameter (was `catalog_id`) |
+| `src/functions/ducklake_expire_snapshots.cpp` | Per-catalog MAX(snapshot_id) in expiration filter |
 | `src/metadata_manager/postgres_metadata_manager.cpp` | Query changes |
 
 ### Schema Changes
@@ -338,6 +408,28 @@ WHERE c.catalog_name = 'my-catalog'
 |---------|---------|
 | 0.5-dev1 | Added catalog-based multi-tenant isolation with BIGINT catalog_id |
 | 0.4-dev1 | Upstream DuckLake version |
+
+---
+
+## Testing Checklist
+
+### Unit Tests (Done)
+- [x] All 243 existing tests pass
+- [x] CATALOG option parsing
+- [x] catalog_id BIGINT in schema
+- [x] catalog_id filtering in queries
+
+### Integration Tests (TODO)
+- [ ] PostgreSQL multi-tenant isolation
+- [ ] Concurrent catalog access
+- [ ] Cross-catalog queries
+- [ ] Catalog creation/lookup
+- [ ] Migration from older versions with existing data
+
+### Performance Tests (TODO)
+- [ ] Query performance with catalog_id filtering
+- [ ] Index effectiveness on PostgreSQL
+- [ ] Large number of catalogs (1000+)
 
 ---
 

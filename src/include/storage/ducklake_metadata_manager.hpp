@@ -107,6 +107,11 @@ public:
 	virtual void InitializeDuckLake(bool has_explicit_schema, DuckLakeEncryption encryption);
 	virtual DuckLakeMetadata LoadDuckLake();
 
+	//! Lookup catalog by name, returns catalog_id or invalid idx if not found
+	virtual optional_idx LookupCatalogByName(const string &catalog_name);
+	//! Create a new catalog entry, returns the new catalog_id
+	virtual idx_t CreateCatalog(const string &catalog_name);
+
 	virtual unique_ptr<QueryResult> Execute(DuckLakeSnapshot snapshot, string &query);
 
 	virtual unique_ptr<QueryResult> Query(DuckLakeSnapshot snapshot, string &query);

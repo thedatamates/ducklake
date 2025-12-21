@@ -241,6 +241,110 @@ SELECT key, value FROM {METADATA_CATALOG}.ducklake_metadata
 	return metadata;
 }
 
+optional_idx DuckLakeMetadataManager::LookupCatalogByName(const string &catalog_name) {
+	auto &ducklake_catalog = transaction.GetCatalog();
+	auto catalog_name_literal = DuckLakeUtil::SQLLiteralToString(catalog_name);
+	string query = StringUtil::Format(
+	    "SELECT catalog_id FROM {METADATA_CATALOG}.ducklake_catalog WHERE catalog_name = %s",
+	    catalog_name_literal);
+	auto result = transaction.Query(query);
+	if (result->HasError()) {
+		return optional_idx();
+	}
+	auto chunk = result->Fetch();
+	if (!chunk || chunk->size() == 0) {
+		return optional_idx();
+	}
+	return optional_idx(chunk->GetValue(0, 0).GetValue<idx_t>());
+}
+
+idx_t DuckLakeMetadataManager::CreateCatalog(const string &catalog_name) {
+	auto catalog_name_literal = DuckLakeUtil::SQLLiteralToString(catalog_name);
+
+	string query = "SELECT COALESCE(MAX(catalog_id), -1) + 1 FROM {METADATA_CATALOG}.ducklake_catalog";
+	auto result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to get next catalog_id: ");
+	}
+	auto chunk = result->Fetch();
+	idx_t new_catalog_id = chunk->GetValue(0, 0).GetValue<idx_t>();
+
+	query = "SELECT COALESCE(MAX(snapshot_id), -1) + 1 FROM {METADATA_CATALOG}.ducklake_snapshot";
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to get next snapshot_id: ");
+	}
+	chunk = result->Fetch();
+	idx_t new_snapshot_id = chunk->GetValue(0, 0).GetValue<idx_t>();
+
+	query = "SELECT COALESCE(MAX(next_entry_id), 0) FROM {METADATA_CATALOG}.ducklake_snapshot";
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to get next entry_id: ");
+	}
+	chunk = result->Fetch();
+	idx_t main_schema_id = chunk->GetValue(0, 0).GetValue<idx_t>();
+	idx_t next_entry_id = main_schema_id + 1;
+
+	query = "SELECT COALESCE(MAX(next_file_id), 0) FROM {METADATA_CATALOG}.ducklake_snapshot";
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to get next file_id: ");
+	}
+	chunk = result->Fetch();
+	idx_t next_file_id = chunk->GetValue(0, 0).GetValue<idx_t>();
+
+	query = StringUtil::Format(
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_catalog (catalog_id, catalog_name, created_snapshot) "
+	    "VALUES (%llu, %s, %llu)",
+	    new_catalog_id, catalog_name_literal, new_snapshot_id);
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to create catalog: ");
+	}
+
+	query = StringUtil::Format(
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_schema_versions (catalog_id, begin_snapshot, schema_version) "
+	    "VALUES (%llu, %llu, 0)",
+	    new_catalog_id, new_snapshot_id);
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to create schema_versions entry: ");
+	}
+
+	query = StringUtil::Format(
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot "
+	    "(catalog_id, snapshot_id, snapshot_time, schema_version, next_entry_id, next_file_id) "
+	    "VALUES (%llu, %llu, NOW(), 0, %llu, %llu)",
+	    new_catalog_id, new_snapshot_id, next_entry_id, next_file_id);
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to create initial snapshot: ");
+	}
+
+	query = StringUtil::Format(
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_changes "
+	    "(catalog_id, snapshot_id, changes_made, author, commit_message, commit_extra_info) "
+	    "VALUES (%llu, %llu, 'schemas_created=[main]', NULL, NULL, NULL)",
+	    new_catalog_id, new_snapshot_id);
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to create snapshot_changes entry: ");
+	}
+
+	query = StringUtil::Format(
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_schema "
+	    "(catalog_id, schema_id, schema_uuid, begin_snapshot, end_snapshot, schema_name, path, path_is_relative) "
+	    "VALUES (%llu, %llu, UUID(), %llu, NULL, 'main', 'main/', true)",
+	    new_catalog_id, main_schema_id, new_snapshot_id);
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to create main schema: ");
+	}
+
+	return new_catalog_id;
+}
+
 static bool AddChildColumn(vector<DuckLakeColumnInfo> &columns, FieldIndex parent_id, DuckLakeColumnInfo &column_info) {
 	for (auto &col : columns) {
 		if (col.id == parent_id) {
@@ -2505,13 +2609,15 @@ SnapshotDeletedFromFiles
 DuckLakeMetadataManager::GetFilesDeletedOrDroppedAfterSnapshot(const DuckLakeSnapshot &start_snapshot) const {
 	// get all changes made to the system after the snapshot was started
 	auto result = transaction.Query(start_snapshot, R"(
-	SELECT data_file_id
-	FROM {METADATA_CATALOG}.ducklake_delete_file
-	WHERE begin_snapshot > {SNAPSHOT_ID}
+	SELECT df.data_file_id
+	FROM {METADATA_CATALOG}.ducklake_delete_file df
+	JOIN {METADATA_CATALOG}.ducklake_table t ON df.table_id = t.table_id
+	WHERE df.begin_snapshot > {SNAPSHOT_ID} AND t.catalog_id = {CATALOG_ID}
 	UNION ALL
-	SELECT data_file_id
-	FROM {METADATA_CATALOG}.ducklake_data_file
-	WHERE end_snapshot IS NOT NULL AND end_snapshot > {SNAPSHOT_ID}
+	SELECT df.data_file_id
+	FROM {METADATA_CATALOG}.ducklake_data_file df
+	JOIN {METADATA_CATALOG}.ducklake_table t ON df.table_id = t.table_id
+	WHERE df.end_snapshot IS NOT NULL AND df.end_snapshot > {SNAPSHOT_ID} AND t.catalog_id = {CATALOG_ID}
 	)");
 	if (result->HasError()) {
 		result->GetErrorObject().Throw(
@@ -2834,13 +2940,14 @@ static timestamp_tz_t GetTimestampTZFromRow(ClientContext &context, const T &row
 
 vector<DuckLakeSnapshotInfo> DuckLakeMetadataManager::GetAllSnapshots(const string &filter) {
 	auto res = transaction.Query(StringUtil::Format(R"(
-SELECT snapshot_id, snapshot_time, schema_version, changes_made, author, commit_message, commit_extra_info
-FROM {METADATA_CATALOG}.ducklake_snapshot
-LEFT JOIN {METADATA_CATALOG}.ducklake_snapshot_changes USING (snapshot_id)
-%s %s
-ORDER BY snapshot_id
+SELECT s.snapshot_id, s.snapshot_time, s.schema_version, sc.changes_made, sc.author, sc.commit_message, sc.commit_extra_info
+FROM {METADATA_CATALOG}.ducklake_snapshot s
+LEFT JOIN {METADATA_CATALOG}.ducklake_snapshot_changes sc
+    ON s.snapshot_id = sc.snapshot_id AND s.catalog_id = sc.catalog_id
+WHERE s.catalog_id = {CATALOG_ID} %s
+ORDER BY s.snapshot_id
 )",
-	                                                filter.empty() ? "" : "WHERE", filter));
+	                                                filter.empty() ? "" : "AND " + filter));
 	if (res->HasError()) {
 		res->GetErrorObject().Throw("Failed to get snapshot information from DuckLake: ");
 	}
@@ -2862,10 +2969,11 @@ ORDER BY snapshot_id
 }
 
 vector<DuckLakeFileForCleanup> DuckLakeMetadataManager::GetOldFilesForCleanup(const string &filter) {
-	string where_clause = filter.empty() ? "" : "WHERE " + filter;
+	string where_clause = filter.empty() ? "" : " AND " + filter;
 	auto query = R"(
 SELECT data_file_id, path, path_is_relative, schedule_start
 FROM {METADATA_CATALOG}.ducklake_files_scheduled_for_deletion
+WHERE catalog_id = {CATALOG_ID}
 )" + where_clause;
 	auto res = transaction.Query(query);
 	if (res->HasError()) {
@@ -2912,8 +3020,8 @@ FROM
     SELECT f.path AS file_path, f.path_is_relative AS file_relative, table_id
     FROM {METADATA_CATALOG}.ducklake_delete_file f
   ) AS f
-   JOIN {METADATA_CATALOG}.ducklake_table t ON f.table_id = t.table_id
-   JOIN {METADATA_CATALOG}.ducklake_schema s ON t.schema_id = s.schema_id) AS r
+   JOIN {METADATA_CATALOG}.ducklake_table t ON f.table_id = t.table_id AND t.catalog_id = {CATALOG_ID}
+   JOIN {METADATA_CATALOG}.ducklake_schema s ON t.schema_id = s.schema_id AND s.catalog_id = {CATALOG_ID}) AS r
 UNION ALL
 SELECT REPLACE(
     CASE
@@ -2924,6 +3032,7 @@ SELECT REPLACE(
            '{SEPARATOR}'
 ) AS full_path
 FROM {METADATA_CATALOG}.ducklake_files_scheduled_for_deletion f
+WHERE f.catalog_id = {CATALOG_ID}
 )
 )" + filter;
 	query = StringUtil::Replace(query, "{SEPARATOR}", separator);
@@ -3360,7 +3469,7 @@ FROM {METADATA_CATALOG}.ducklake_table tbl, LATERAL (
 	FROM {METADATA_CATALOG}.ducklake_delete_file df
 	WHERE df.table_id = tbl.table_id AND {SNAPSHOT_ID} >= begin_snapshot AND ({SNAPSHOT_ID} < end_snapshot OR end_snapshot IS NULL)
 ) delete_file_info
-WHERE {SNAPSHOT_ID} >= begin_snapshot AND ({SNAPSHOT_ID} < end_snapshot OR end_snapshot IS NULL)
+WHERE tbl.catalog_id = {CATALOG_ID} AND {SNAPSHOT_ID} >= begin_snapshot AND ({SNAPSHOT_ID} < end_snapshot OR end_snapshot IS NULL)
 )");
 	for (auto &row : *result) {
 		DuckLakeTableSizeInfo table_size;

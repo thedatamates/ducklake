@@ -55,14 +55,14 @@ static unique_ptr<FunctionData> DuckLakeExpireSnapshotsBind(ClientContext &conte
 
 	string filter;
 	// we can never delete the most recent snapshot
-	filter = "snapshot_id != (SELECT MAX(snapshot_id) FROM {METADATA_CATALOG}.ducklake_snapshot) AND ";
+	filter = "s.snapshot_id != (SELECT MAX(snapshot_id) FROM {METADATA_CATALOG}.ducklake_snapshot WHERE catalog_id = {CATALOG_ID}) AND ";
 	if (has_timestamp) {
 		auto ts = Timestamp::ToString(timestamp_t(from_timestamp.value));
-		filter += StringUtil::Format("snapshot_time < '%s'", ts);
+		filter += StringUtil::Format("s.snapshot_time < '%s'", ts);
 	} else if (!has_versions && !older_than_default.empty()) {
-		filter += StringUtil::Format("snapshot_time < NOW() - INTERVAL '%s'", older_than_default);
+		filter += StringUtil::Format("s.snapshot_time < NOW() - INTERVAL '%s'", older_than_default);
 	} else {
-		filter += StringUtil::Format("snapshot_id IN (%s)", snapshot_list);
+		filter += StringUtil::Format("s.snapshot_id IN (%s)", snapshot_list);
 	}
 	auto &transaction = DuckLakeTransaction::Get(context, catalog);
 	auto &metadata_manager = transaction.GetMetadataManager();

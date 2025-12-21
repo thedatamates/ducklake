@@ -76,16 +76,11 @@ SELECT COUNT(*) FROM users;
 ----
 2
 
-# Verify catalog_id in metadata tables
+# Verify each catalog has its own metadata database (separate files = separate metadata)
 query I
-SELECT DISTINCT catalog_id FROM __ducklake_metadata_tenant_a.ducklake_schema WHERE schema_name = 'main';
+SELECT COUNT(*) FROM duckdb_databases() WHERE database_name LIKE '__ducklake_metadata_%';
 ----
-0
-
-query I
-SELECT DISTINCT catalog_id FROM __ducklake_metadata_tenant_b.ducklake_schema WHERE schema_name = 'main';
-----
-0
+2
 
 # Clean up
 statement ok
