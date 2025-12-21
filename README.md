@@ -80,20 +80,70 @@ INSERT INTO test VALUES (1, 'hello');
 
 ## Metadata Storage
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Metadata Database                         │
-│  (DuckDB file, PostgreSQL, or MySQL)                        │
-├─────────────────────────────────────────────────────────────┤
-│  ducklake_catalog      │ catalog_id, catalog_name           │
-│  ducklake_snapshot     │ catalog_id, snapshot_id, ...       │
-│  ducklake_schema       │ catalog_id, schema_id, ...         │
-│  ducklake_table        │ catalog_id, table_id, ...          │
-│  ducklake_column       │ table_id, column_id, ...           │
-│  ducklake_data_file    │ table_id, data_file_id, ...        │
-│  ...                   │                                     │
-└─────────────────────────────────────────────────────────────┘
-```
+Metadata is stored in a catalog database (DuckDB file, PostgreSQL, or MySQL).
+
+### Core Tables
+
+| Table | Columns |
+|-------|---------|
+| `ducklake_metadata` | key, value, scope, scope_id |
+| `ducklake_catalog` | **catalog_id** (PK), catalog_name (UNIQUE), created_snapshot |
+| `ducklake_snapshot` | **catalog_id**, snapshot_id (PK), snapshot_time, schema_version, next_catalog_id, next_file_id |
+| `ducklake_snapshot_changes` | **catalog_id**, snapshot_id (PK), changes_made, author, commit_message, commit_extra_info |
+| `ducklake_schema` | **catalog_id**, schema_id (PK), schema_uuid, begin_snapshot, end_snapshot, schema_name, path, path_is_relative |
+| `ducklake_schema_versions` | **catalog_id**, begin_snapshot, schema_version |
+
+### Table & View Definitions
+
+| Table | Columns |
+|-------|---------|
+| `ducklake_table` | **catalog_id**, table_id, table_uuid, begin_snapshot, end_snapshot, schema_id, table_name, path, path_is_relative |
+| `ducklake_view` | **catalog_id**, view_id, view_uuid, begin_snapshot, end_snapshot, schema_id, view_name, dialect, sql, column_aliases |
+| `ducklake_column` | column_id, begin_snapshot, end_snapshot, table_id, column_order, column_name, column_type, initial_default, default_value, nulls_allowed, parent_column, default_value_type, default_value_dialect |
+| `ducklake_tag` | object_id, begin_snapshot, end_snapshot, key, value |
+| `ducklake_column_tag` | table_id, column_id, begin_snapshot, end_snapshot, key, value |
+
+### Data Files
+
+| Table | Columns |
+|-------|---------|
+| `ducklake_data_file` | data_file_id (PK), table_id, begin_snapshot, end_snapshot, file_order, path, path_is_relative, file_format, record_count, file_size_bytes, footer_size, row_id_start, partition_id, encryption_key, partial_file_info, mapping_id |
+| `ducklake_delete_file` | delete_file_id (PK), table_id, begin_snapshot, end_snapshot, data_file_id, path, path_is_relative, format, delete_count, file_size_bytes, footer_size, encryption_key |
+| `ducklake_files_scheduled_for_deletion` | **catalog_id**, data_file_id, path, path_is_relative, schedule_start |
+| `ducklake_inlined_data_tables` | table_id, table_name, schema_version |
+
+### Statistics
+
+| Table | Columns |
+|-------|---------|
+| `ducklake_table_stats` | **catalog_id**, table_id, record_count, next_row_id, file_size_bytes |
+| `ducklake_table_column_stats` | table_id, column_id, contains_null, contains_nan, min_value, max_value, extra_stats |
+| `ducklake_file_column_stats` | data_file_id, table_id, column_id, column_size_bytes, value_count, null_count, min_value, max_value, contains_nan, extra_stats |
+
+### Partitioning
+
+| Table | Columns |
+|-------|---------|
+| `ducklake_partition_info` | **catalog_id**, partition_id, table_id, begin_snapshot, end_snapshot |
+| `ducklake_partition_column` | partition_id, table_id, partition_key_index, column_id, transform |
+| `ducklake_file_partition_value` | data_file_id, table_id, partition_key_index, partition_value |
+
+### Column Mapping
+
+| Table | Columns |
+|-------|---------|
+| `ducklake_column_mapping` | mapping_id, table_id, type |
+| `ducklake_name_mapping` | mapping_id, column_id, source_name, target_field_id, parent_column, is_partition |
+
+### Macros
+
+| Table | Columns |
+|-------|---------|
+| `ducklake_macro` | **catalog_id**, schema_id, macro_id, macro_name, begin_snapshot, end_snapshot |
+| `ducklake_macro_impl` | macro_id, impl_id, dialect, sql, type |
+| `ducklake_macro_parameters` | macro_id, impl_id, column_id, parameter_name, parameter_type, default_value, default_value_type |
+
+**Bold** columns indicate `catalog_id` for multi-tenant isolation. Tables without `catalog_id` are filtered via foreign key joins (e.g., `ducklake_column` is filtered by `table_id` which belongs to a catalog).
 
 ## Data Storage
 
@@ -148,16 +198,18 @@ ATTACH 'ducklake:<metadata_path>' AS <alias> (
 );
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `CATALOG` | **Yes** | Catalog name for tenant isolation |
-| `DATA_PATH` | No | Base path for parquet files |
-| `METADATA_SCHEMA` | No | PostgreSQL schema for metadata tables |
-| `SNAPSHOT_VERSION` | No | Attach at specific version (read-only) |
-| `SNAPSHOT_TIME` | No | Attach at specific timestamp (read-only) |
-| `ENCRYPTED` | No | Enable/disable encryption |
-| `DATA_INLINING_ROW_LIMIT` | No | Max rows to inline in catalog |
-| `CREATE_IF_NOT_EXISTS` | No | Create new DuckLake if not found |
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `CATALOG` | **Yes** | - | Catalog name for tenant isolation |
+| `DATA_PATH` | No | (none) | Base path for parquet files |
+| `METADATA_SCHEMA` | No | `public` | PostgreSQL schema for metadata tables |
+| `SNAPSHOT_VERSION` | No | (latest) | Attach at specific version (read-only) |
+| `SNAPSHOT_TIME` | No | (latest) | Attach at specific timestamp (read-only) |
+| `ENCRYPTED` | No | `AUTOMATIC` | Enable/disable encryption (inherits from existing catalog) |
+| `DATA_INLINING_ROW_LIMIT` | No | `0` | Max rows to inline in catalog (0 = disabled) |
+| `CREATE_IF_NOT_EXISTS` | No | `true` | Create new DuckLake if not found |
+| `MIGRATE_IF_REQUIRED` | No | `true` | Auto-migrate older DuckLake versions |
+| `OVERRIDE_DATA_PATH` | No | `false` | Allow different DATA_PATH than stored in catalog |
 
 ## CREATE TABLE
 
@@ -234,25 +286,235 @@ ATTACH 'ducklake:...' AS lake (CATALOG 'x', SNAPSHOT_TIME '2024-01-01 12:00:00')
 SELECT * FROM table AT TIMESTAMP '2024-01-01';
 ```
 
-## Snapshots
+---
+
+# Parquet File Lifecycle
+
+DuckLake uses a **copy-on-write** model. Files are never modified in place - new files are created and metadata tracks which files are valid for each snapshot.
+
+## File Storage
+
+Files are stored at: `DATA_PATH/catalog_name/schema_name/table_name/*.parquet`
+
+Each file is tracked in metadata with:
+- `data_file_id` - Unique identifier
+- `begin_snapshot` - Snapshot when file became valid
+- `end_snapshot` - Snapshot when file was invalidated (NULL if still valid)
+- `record_count`, `file_size_bytes` - Statistics
+
+## Operations and File Behavior
+
+| Operation | Files Created | Files Modified | Files Deleted |
+|-----------|--------------|----------------|---------------|
+| **INSERT** | New parquet file(s) | None | None |
+| **SELECT** | None | None | None |
+| **UPDATE** | New parquet + delete file | None | None |
+| **DELETE** | Delete file (or none if full file) | None | None |
+| **DROP TABLE** | None | Sets `end_snapshot` on all files | None |
+| **expire_snapshots** | None | Schedules old files for deletion | None |
+| **cleanup_old_files** | None | None | Deletes scheduled files |
+| **merge_adjacent_files** | New merged file | Sets `end_snapshot` on old | None |
+| **rewrite_data_files** | New file without deleted rows | Sets `end_snapshot` on old | None |
+
+## INSERT
+
+```
+Before: table has files [A, B]
+INSERT INTO table VALUES (...)
+After:  table has files [A, B, C]  ← new file C created
+```
+
+- New parquet file written to `DATA_PATH/catalog/schema/table/`
+- File registered in `ducklake_data_file` with `begin_snapshot = current`
+- **Data inlining**: If rows ≤ `data_inlining_row_limit`, data stored in metadata (no file created)
+
+## UPDATE (Copy-on-Write)
+
+```
+Before: file A contains rows [1, 2, 3]
+UPDATE table SET x = 'new' WHERE id = 2
+After:  file A unchanged, delete file D marks row 2, file E has updated row 2
+```
+
+- Original file **not modified**
+- Delete file created to mark updated rows as deleted
+- New file created with updated row values
+- Both files remain accessible for time travel
+
+## DELETE
+
+**Partial delete** (some rows in file):
+```
+Before: file A contains rows [1, 2, 3]
+DELETE FROM table WHERE id = 2
+After:  file A unchanged, delete file D created marking row 2
+```
+
+**Full file delete** (all rows in file):
+```
+Before: file A contains rows [1, 2, 3]
+DELETE FROM table WHERE id IN (1, 2, 3)
+After:  file A marked with end_snapshot (no delete file needed)
+```
+
+- Delete files are small parquet files containing row IDs to skip
+- Original data files remain for time travel
+- Full file deletes just set `end_snapshot` (more efficient)
+
+## SELECT (Read Path)
 
 ```sql
--- View snapshots
-SELECT * FROM ducklake_snapshots('catalog_alias');
-
--- Expire old snapshots
-CALL ducklake_expire_snapshots('catalog_alias', older_than := INTERVAL '7 days');
+SELECT * FROM table;  -- Current snapshot
+SELECT * FROM table AT SNAPSHOT 5;  -- Historical snapshot
 ```
+
+1. Find files where `begin_snapshot <= target AND (end_snapshot IS NULL OR end_snapshot > target)`
+2. For each file, check for associated delete files
+3. Read parquet files, filtering out deleted rows
+4. Apply query predicates (pushed down to parquet reader when possible)
+
+## File Cleanup Lifecycle
+
+Files go through this lifecycle:
+
+```
+ACTIVE                    SCHEDULED               DELETED
+─────────────────────────────────────────────────────────────
+[File created] ──────────► [end_snapshot set] ──► [File removed]
+    INSERT                  expire_snapshots        cleanup_old_files
+    UPDATE (new file)       rewrite_data_files      delete_orphaned_files
+    merge (new file)        merge (old files)
+```
+
+**Step 1: File becomes inactive**
+- `end_snapshot` is set when file is superseded (compaction, rewrite) or table is dropped
+- File still exists on disk for time travel to old snapshots
+
+**Step 2: Snapshot expires**
+- `expire_snapshots()` marks old snapshots as expired
+- Files only referenced by expired snapshots are scheduled for deletion
+- Added to `ducklake_files_scheduled_for_deletion` table
+
+**Step 3: File deleted**
+- `cleanup_old_files()` deletes files that have been scheduled for longer than `delete_older_than`
+- `delete_orphaned_files()` finds and removes files not referenced by any snapshot
 
 ## Compaction
 
-```sql
--- Merge small files
-CALL ducklake_merge_adjacent_files('catalog_alias', 'schema.table');
-
--- Rewrite to remove deleted rows
-CALL ducklake_rewrite_data_files('catalog_alias', 'schema.table');
+**merge_adjacent_files** - Combines small files:
 ```
+Before: files [A(1MB), B(2MB), C(1MB)]
+CALL ducklake.merge_adjacent_files();
+After:  files [A, B, C] marked with end_snapshot, new file D(4MB) created
+```
+
+**rewrite_data_files** - Removes deleted rows:
+```
+Before: file A has 1000 rows, 300 marked deleted
+CALL ducklake.rewrite_data_files();
+After:  file A marked with end_snapshot, new file B has 700 rows
+```
+
+Both operations:
+- Create new optimized files
+- Mark old files with `end_snapshot`
+- Old files remain until `cleanup_old_files()` is called
+- Controlled by `auto_compact` and `rewrite_delete_threshold` options
+
+---
+
+# Functions & Operations
+
+## Query Functions
+
+These return data and are called via `SELECT`:
+
+| Function | Description |
+|----------|-------------|
+| `ducklake_snapshots('catalog')` | List all snapshots with metadata |
+| `ducklake_current_snapshot('catalog')` | Get current snapshot ID |
+| `ducklake_last_committed_snapshot('catalog')` | Get last committed snapshot ID |
+| `ducklake_options('catalog')` | List all configuration options and their values |
+| `ducklake_list_files('catalog', 'table')` | List parquet files for a table |
+| `ducklake_table_info('catalog', 'table')` | Get table metadata |
+| `ducklake_table_changes('catalog', 'schema', 'table', start, end)` | Get all changes between snapshots |
+| `ducklake_table_insertions('catalog', 'schema', 'table', start, end)` | Get insertions between snapshots |
+| `ducklake_table_deletions('catalog', 'schema', 'table', start, end)` | Get deletions between snapshots |
+
+**Shorthand syntax:** `SELECT * FROM catalog.snapshots()` instead of `ducklake_snapshots('catalog')`.
+
+## Procedure Functions
+
+These perform operations and are called via `CALL`:
+
+| Function | Description |
+|----------|-------------|
+| `ducklake_expire_snapshots('catalog', ...)` | Remove old snapshots (keeps files until cleanup) |
+| `ducklake_merge_adjacent_files('catalog', 'table')` | Merge small parquet files into larger ones |
+| `ducklake_rewrite_data_files('catalog', 'table')` | Rewrite files to remove deleted rows |
+| `ducklake_flush_inlined_data('catalog')` | Flush inlined data to parquet files |
+| `ducklake_add_data_files('catalog', 'table', 'path')` | Register external parquet files |
+| `ducklake_cleanup_old_files('catalog')` | Delete files from expired snapshots |
+| `ducklake_delete_orphaned_files('catalog')` | Delete orphaned files not in any snapshot |
+| `ducklake_set_option('catalog', 'option', value, ...)` | Set configuration option |
+| `ducklake_set_commit_message('catalog', 'author', 'message')` | Set commit metadata for next snapshot |
+
+**Shorthand syntax:** `CALL catalog.merge_adjacent_files()` instead of `ducklake_merge_adjacent_files('catalog')`.
+
+## Configuration Options
+
+Set via `CALL ducklake_set_option('catalog', 'option', value)` or `CALL catalog.set_option('option', value)`.
+
+Options can be scoped globally, per-schema, or per-table using `schema =>` and `table_name =>` parameters.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `data_inlining_row_limit` | `0` | Max rows to store inline in metadata (0 = disabled) |
+| `target_file_size` | `512MB` | Target size for parquet files |
+| `parquet_compression` | `snappy` | Compression: uncompressed, snappy, gzip, zstd, brotli, lz4, lz4_raw |
+| `parquet_compression_level` | (default) | Compression level for algorithms that support it |
+| `parquet_version` | `2` | Parquet format version (1 or 2) |
+| `parquet_row_group_size` | (auto) | Rows per row group |
+| `parquet_row_group_size_bytes` | (auto) | Bytes per row group |
+| `per_thread_output` | `false` | Create separate files per thread during parallel insert |
+| `hive_file_pattern` | `true` | Use hive-style folder structure for partitions |
+| `auto_compact` | `true` | Enable automatic compaction in maintenance functions |
+| `rewrite_delete_threshold` | `0.1` | Min deleted fraction (0-1) before rewrite is triggered |
+| `delete_older_than` | `2 days` | Age threshold for `cleanup_old_files` and `delete_orphaned_files` |
+| `expire_older_than` | (none) | Default age threshold for `expire_snapshots` |
+| `require_commit_message` | `false` | Require explicit commit message for snapshots |
+| `encrypted` | `false` | Encrypt parquet files |
+
+## Example Workflows
+
+**View snapshot history:**
+```sql
+SELECT snapshot_id, snapshot_time, changes FROM ducklake.snapshots();
+```
+
+**Track changes between versions:**
+```sql
+SELECT * FROM ducklake.table_changes('main', 'orders', 5, 10) ORDER BY snapshot_id;
+```
+
+**Expire old snapshots and clean up files:**
+```sql
+CALL ducklake_expire_snapshots('ducklake', older_than := INTERVAL '30 days');
+CALL ducklake_cleanup_old_files('ducklake');
+```
+
+**Compact small files:**
+```sql
+CALL ducklake.merge_adjacent_files();  -- All tables
+CALL ducklake_merge_adjacent_files('ducklake', 'main.orders');  -- Specific table
+```
+
+**Set compression for a schema:**
+```sql
+CALL ducklake.set_option('parquet_compression', 'zstd', schema => 'analytics');
+```
+
+---
 
 ## Partitioning
 
@@ -297,8 +559,8 @@ CREATE INDEX idx_snapshot_catalog ON ducklake_snapshot(catalog_id);
 ## File Size Tuning
 
 ```sql
-SET ducklake_target_file_size = '512MB';
-SET ducklake_parquet_row_group_size_bytes = '128MB';
+CALL ducklake.set_option('target_file_size', '512MB');
+CALL ducklake.set_option('parquet_row_group_size_bytes', '128MB');
 ```
 
 ---
