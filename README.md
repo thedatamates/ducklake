@@ -1,5 +1,47 @@
 # DuckLake Fork - Multi-Tenant Catalog Isolation
 
+## The Vision: Hyper-Tenancy for AI Agents
+
+Traditional database scaling focuses on capacity (more data) and throughput (more queries). But [AI agents are creating a new dimension for database scalability](https://thenewstack.io/ai-agents-create-a-new-dimension-for-database-scalability/): **How many databases can you create and maintain?**
+
+Agents are spun up by the millions. Each agent needs private data storage with strict isolation guarantees. Traditional multitenancy breaks down at this scale. What's needed is **hyper-tenancy**: finer-grained isolation with elastic scalability.
+
+This fork enables that vision by separating **compute** from **catalog**:
+
+- **DuckDB as compute nodes** - Spin up ephemeral DuckDB instances per agent or workflow. They're lightweight, in-process, and disposable.
+- **PostgreSQL as shared catalog** - One central metadata store with `catalog_id`-based isolation. Millions of catalogs, one database.
+- **Instant provisioning** - Creating a new catalog is a single INSERT, not a new database instance.
+- **True isolation** - Each catalog's data is completely separated via `WHERE catalog_id = ?`
+
+```
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│  Agent A    │  │  Agent B    │  │  Agent C    │
+│  (DuckDB)   │  │  (DuckDB)   │  │  (DuckDB)   │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │
+       │ ATTACH         │ ATTACH         │ ATTACH
+       │ CATALOG 'a'    │ CATALOG 'b'    │ CATALOG 'c'
+       │                │                │
+       └────────────────┼────────────────┘
+                        │
+                        ▼
+              ┌─────────────────┐
+              │   PostgreSQL    │
+              │  (shared catalog)│
+              │                 │
+              │ catalog_id = 0  │
+              │ catalog_id = 1  │
+              │ catalog_id = 2  │
+              │      ...        │
+              └─────────────────┘
+```
+
+Each agent gets its own tables, schemas, snapshots, and parquet files - all isolated by a simple integer ID. When the agent is done, the compute node disappears; the catalog entry can be cleaned up trivially.
+
+---
+
+## Overview
+
 This is a fork of [DuckLake](https://github.com/duckdb/ducklake) that adds **catalog-based multi-tenant isolation**. Instead of using PostgreSQL schema-level isolation (one schema per tenant), this fork uses a `catalog_id` column to isolate tenants within a shared schema.
 
 ## Why This Fork?
