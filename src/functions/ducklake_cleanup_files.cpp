@@ -129,16 +129,32 @@ void DuckLakeCleanupExecute(ClientContext &context, TableFunctionInput &data_p, 
 		return;
 	}
 	if (!state.executed && !data.dry_run) {
-		// delete the files
 		auto &fs = FileSystem::GetFileSystem(context);
+		auto &transaction = DuckLakeTransaction::Get(context, data.catalog);
+		auto &metadata_manager = transaction.GetMetadataManager();
+		vector<DuckLakeFileForCleanup> files_to_remove;
 		for (auto &file : data.files) {
+			if (file.id.IsValid()) {
+				auto check_query = StringUtil::Format(
+				    "SELECT COUNT(*) FROM {METADATA_CATALOG}.ducklake_data_file "
+				    "WHERE data_file_id = %llu AND end_snapshot IS NULL",
+				    file.id.index);
+				auto result = transaction.Query(check_query);
+				if (!result->HasError()) {
+					auto chunk = result->Fetch();
+					if (chunk && chunk->size() > 0) {
+						auto count = chunk->GetValue(0, 0).GetValue<int64_t>();
+						if (count > 0) {
+							continue;
+						}
+					}
+				}
+			}
 			fs.TryRemoveFile(file.path);
+			files_to_remove.push_back(file);
 		}
-		if (data.type == CleanupType::OLD_FILES) {
-			// If we are removing old files, we need to remove them from the catalog
-			auto &transaction = DuckLakeTransaction::Get(context, data.catalog);
-			auto &metadata_manager = transaction.GetMetadataManager();
-			metadata_manager.RemoveFilesScheduledForCleanup(data.files);
+		if (data.type == CleanupType::OLD_FILES && !files_to_remove.empty()) {
+			metadata_manager.RemoveFilesScheduledForCleanup(files_to_remove);
 		}
 		state.executed = true;
 	}

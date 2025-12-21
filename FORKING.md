@@ -112,6 +112,37 @@ Fork C created     → snapshot 54 (next_file_id=105)
 4. **Immutable data is cheap** - just INSERT with begin_snapshot, no end_snapshot updates
 5. **Fork is trivial** - copy rows, change catalog_id, same IDs preserved
 
+### Path Storage Strategy
+
+Paths are stored **relative to `DATA_PATH`** (not `effective_data_path`), including the catalog subdirectory:
+
+```
+DATA_PATH = /data/
+CATALOG = parent
+effective_data_path = /data/parent/  (used for writing files)
+
+File written to: /data/parent/main/users/file.parquet
+Path stored:     parent/main/users/file.parquet  (relative to DATA_PATH)
+Path resolved:   DATA_PATH + stored_path = /data/parent/main/users/file.parquet
+```
+
+**Why this matters for forking:**
+
+When a catalog is forked, the stored paths don't need conversion. Both parent and fork resolve the same stored path to the same physical file:
+
+```
+Parent (CATALOG=parent):  /data/ + parent/main/users/file.parquet
+Fork (CATALOG=fork):      /data/ + parent/main/users/file.parquet  ← Same!
+```
+
+Fork's NEW files go to a different location:
+```
+Fork writes to:  /data/fork/main/users/newfile.parquet
+Path stored:     fork/main/users/newfile.parquet
+```
+
+This is implemented in `GetRelativePath()` and `FromRelativePath()` which use `BaseDataPath()` instead of `DataPath()`.
+
 ## Schema Changes Required
 
 ### Changed: ducklake_snapshot (Remove catalog_id)
@@ -469,33 +500,29 @@ WHERE catalog_id = parent_catalog_id
 
 -- ... same for all entity tables
 
--- 5. Convert relative paths to absolute
-UPDATE ducklake_data_file
-SET path = parent_data_path || path, path_is_relative = FALSE
-WHERE catalog_id = 5 AND path_is_relative = TRUE;
-
--- 6. Record fork in snapshot_changes
+-- 5. Record fork in snapshot_changes
 INSERT INTO ducklake_snapshot_changes (snapshot_id, catalog_id, changes_made)
 VALUES (54, 5, 'forked_from:' || parent_catalog_id);
 ```
 
 No ID remapping. IDs preserve lineage. Fork's `data_file_id=3` is the same file as parent's `data_file_id=3`.
 
+**No path conversion needed** - paths are stored relative to `DATA_PATH` (not `effective_data_path`), so they include the catalog subdirectory. Example: `parent/main/users/file.parquet`. Both parent and fork resolve this to the same physical location.
+
 ### Fork Function
 
 ```sql
-CALL ducklake_fork_catalog('parent_catalog', 'new_catalog_name', '/new/data/path');
+SELECT ducklake_fork_catalog('parent_catalog', 'new_catalog_name');
 ```
 
 **Steps:**
 
-1. Validate inputs (parent exists, new name unique, paths don't overlap)
+1. Validate inputs (parent exists, new name unique)
 2. Create new global snapshot
 3. Allocate new catalog_id from snapshot's counter
 4. Create catalog entry with `begin_snapshot = new_snapshot`
 5. Copy all current entity rows (WHERE end_snapshot IS NULL)
-6. Convert relative paths to absolute
-7. Record fork in snapshot_changes
+6. Record fork in snapshot_changes
 
 ### Tables to Copy During Fork
 
@@ -507,8 +534,8 @@ CALL ducklake_fork_catalog('parent_catalog', 'new_catalog_name', '/new/data/path
 | `ducklake_table` | Copy current rows |
 | `ducklake_view` | Copy current rows |
 | `ducklake_column` | Copy current rows |
-| `ducklake_data_file` | Copy current rows, convert relative paths |
-| `ducklake_delete_file` | Copy current rows, convert relative paths |
+| `ducklake_data_file` | Copy current rows |
+| `ducklake_delete_file` | Copy current rows |
 | `ducklake_file_column_stats` | Copy current rows |
 | `ducklake_table_stats` | Copy current rows |
 | `ducklake_table_column_stats` | Copy current rows |

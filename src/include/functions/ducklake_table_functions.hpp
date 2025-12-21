@@ -119,4 +119,9 @@ public:
 	static TableFunctionSet GetFunctions();
 };
 
+class DuckLakeForkCatalogFunction : public TableFunction {
+public:
+	DuckLakeForkCatalogFunction();
+};
+
 } // namespace duckdb

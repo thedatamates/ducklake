@@ -105,6 +105,8 @@ public:
 
 	//! Initialize a new DuckLake
 	virtual void InitializeDuckLake(bool has_explicit_schema, DuckLakeEncryption encryption);
+	//! Create the DuckLake schema (DuckDB only - PostgreSQL requires pre-created schema)
+	virtual void CreateDuckLakeSchema(DuckLakeEncryption encryption);
 	virtual DuckLakeMetadata LoadDuckLake();
 
 	//! Lookup catalog by name, returns catalog_id or invalid idx if not found
@@ -206,11 +208,6 @@ public:
 	virtual string GetPathForTable(TableIndex table_id, const vector<DuckLakeTableInfo> &new_tables,
 	                               const vector<DuckLakeSchemaInfo> &new_schemas_result);
 
-	virtual void MigrateV01();
-	virtual void MigrateV02(bool allow_failures = false);
-	virtual void MigrateV03(bool allow_failures = false);
-	virtual void MigrateV04(bool allow_failures = false);
-	virtual void ExecuteMigration(string migrate_query, bool allow_failures);
 
 	string LoadPath(string path);
 	string StorePath(string path);

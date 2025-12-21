@@ -70,10 +70,14 @@ string PostgresMetadataManager::GetLatestSnapshotQuery() const {
 	return R"(
 	SELECT * FROM postgres_query({METADATA_CATALOG_NAME_LITERAL},
 		'SELECT snapshot_id, schema_version, next_catalog_id, next_file_id
-		 FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot WHERE catalog_id = ' || {CATALOG_ID} || ' AND snapshot_id = (
-		     SELECT MAX(snapshot_id) FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot WHERE catalog_id = ' || {CATALOG_ID} || '
-		 );')
+		 FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot
+		 ORDER BY snapshot_id DESC LIMIT 1;')
 	)";
+}
+
+void PostgresMetadataManager::CreateDuckLakeSchema(DuckLakeEncryption encryption) {
+	throw IOException("DuckLake schema not found. For PostgreSQL, the schema must be created before attaching. "
+	                  "Run: psql -d your_database -f schema/postgresql.sql");
 }
 
 } // namespace duckdb

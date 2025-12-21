@@ -135,6 +135,12 @@ void DuckLakeInitializer::InitializeNewDuckLake(DuckLakeTransaction &transaction
 		// default to unencrypted
 		catalog.SetEncryption(DuckLakeEncryption::UNENCRYPTED);
 	}
+
+	if (options.create_if_not_exists) {
+		options.catalog_id = metadata_manager.CreateCatalog(options.catalog_name);
+	} else {
+		throw InvalidInputException("Catalog '%s' does not exist in this DuckLake instance", options.catalog_name);
+	}
 }
 
 void DuckLakeInitializer::LoadExistingDuckLake(DuckLakeTransaction &transaction) {
@@ -144,33 +150,10 @@ void DuckLakeInitializer::LoadExistingDuckLake(DuckLakeTransaction &transaction)
 	for (auto &tag : metadata.tags) {
 		if (tag.key == "version") {
 			string version = tag.value;
-			if (version != "0.4-dev1" && !options.migrate_if_required) {
-				throw InvalidInputException("DuckLake Extension requires a DuckLake Catalog version of 0.4-dev1 or "
-				                            "higher, current version is %s "
-				                            "and migrate_if_required is set to false",
+			if (version != "0.5-dev1") {
+				throw InvalidInputException("DuckLake Extension requires schema version 0.5-dev1, current version is %s. "
+				                            "Migration from older versions is not supported. Please create a fresh v0.5 schema.",
 				                            version);
-			}
-			if (version == "0.1") {
-				metadata_manager.MigrateV01();
-				version = "0.2";
-			}
-			if (version == "0.2") {
-				metadata_manager.MigrateV02();
-				version = "0.3";
-			}
-			if (version == "0.3-dev1") {
-				metadata_manager.MigrateV02(true);
-				version = "0.3";
-			}
-			if (version == "0.3") {
-				metadata_manager.MigrateV03();
-			}
-			if (version == "0.3") {
-				metadata_manager.MigrateV04(true);
-				version = "0.4-dev1";
-			}
-			if (version != "0.4-dev1") {
-				throw NotImplementedException("Only DuckLake versions 0.1, 0.2, 0.3-dev1, 0.3, 0.4-dev1 are supported");
 			}
 		}
 		if (tag.key == "data_path") {
