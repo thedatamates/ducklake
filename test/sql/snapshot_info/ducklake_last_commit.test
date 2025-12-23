@@ -14,14 +14,14 @@ FROM ducklake_last_committed_snapshot('ducklake')
 ----
 NULL
 
-# Snapshot 1
+# Snapshot 2
 statement ok
 CREATE TABLE ducklake.integer(i INTEGER);
 
 query I
 FROM ducklake_last_committed_snapshot('ducklake')
 ----
-1
+2
 
 # Start a few transactions
 statement ok con1
@@ -46,17 +46,17 @@ INSERT into ducklake.integer values (0);
 statement ok con3
 INSERT into ducklake.integer  values (1);
 
-# Snapshot still 1
+# Snapshot still 2
 query I
 FROM ducklake_last_committed_snapshot('ducklake')
 ----
-1
+2
 
 # Check commited snapshot from within a transaction
 query I con1
 FROM ducklake_last_committed_snapshot('ducklake')
 ----
-1
+2
 
 statement ok con1
 COMMIT
@@ -64,7 +64,7 @@ COMMIT
 query I
 FROM ducklake_last_committed_snapshot('ducklake')
 ----
-2
+3
 
 statement ok con2
 ROLLBACK
@@ -72,7 +72,7 @@ ROLLBACK
 query I
 FROM ducklake_last_committed_snapshot('ducklake')
 ----
-2
+3
 
 statement ok con3
 COMMIT
@@ -80,7 +80,7 @@ COMMIT
 query I
 FROM ducklake_last_committed_snapshot('ducklake')
 ----
-3
+4
 
 statement ok
 DETACH ducklake
@@ -120,8 +120,8 @@ FROM ducklake_last_committed_snapshot('ducklake')
 
 endloop
 
-# 26 + 3
+# 26 + 4
 query I
 FROM last_committed_snapshot()
 ----
-29
+30

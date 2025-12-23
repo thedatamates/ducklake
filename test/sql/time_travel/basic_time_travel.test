@@ -28,22 +28,22 @@ INSERT INTO ducklake.test VALUES ({'i': 1, 'j': 2}), ({'i': NULL, 'j': 3}), (NUL
 
 # non-existent version
 statement error
-SELECT * FROM ducklake.test AT (VERSION => 10)
+SELECT * FROM ducklake.test AT (VERSION => 11)
 ----
-No snapshot found at version 10
+No snapshot found at version 11
 
 # table does not exist
 statement error
-SELECT * FROM ducklake.test AT (VERSION => 0)
-----
-does not exist at version 0
-
-query I
 SELECT * FROM ducklake.test AT (VERSION => 1)
 ----
+does not exist at version 1
 
 query I
 SELECT * FROM ducklake.test AT (VERSION => 2)
+----
+
+query I
+SELECT * FROM ducklake.test AT (VERSION => 3)
 ----
 {'i': 1, 'j': 2}
 {'i': NULL, 'j': 3}
@@ -58,7 +58,7 @@ SELECT * FROM ducklake.test AT (TIMESTAMP => NOW())
 NULL
 
 statement ok
-SET VARIABLE snapshot_time = (SELECT snapshot_time FROM ducklake.snapshots() WHERE snapshot_id=1);
+SET VARIABLE snapshot_time = (SELECT snapshot_time FROM ducklake.snapshots() WHERE snapshot_id=2);
 
 query I
 SELECT * FROM ducklake.test AT (TIMESTAMP => getvariable('snapshot_time'))
@@ -74,7 +74,7 @@ SELECT * FROM ducklake.test
 does not exist
 
 query I
-SELECT * FROM ducklake.test AT (VERSION => 2)
+SELECT * FROM ducklake.test AT (VERSION => 3)
 ----
 {'i': 1, 'j': 2}
 {'i': NULL, 'j': 3}
@@ -82,7 +82,7 @@ NULL
 
 # get a changeset
 query I rowsort
-SELECT * FROM ducklake.test AT (version => 2) EXCEPT SELECT * FROM ducklake.test AT (version => 1)
+SELECT * FROM ducklake.test AT (version => 3) EXCEPT SELECT * FROM ducklake.test AT (version => 2)
 ----
 NULL
 {'i': 1, 'j': 2}
@@ -102,11 +102,11 @@ statement ok
 DROP SCHEMA ducklake.s1 CASCADE
 
 query I
-SELECT * FROM ducklake.s1.tbl AT (version => 6)
+SELECT * FROM ducklake.s1.tbl AT (version => 7)
 ----
 42
 
 statement error
-SELECT * FROM ducklake.s1.tbl AT (version => 7)
+SELECT * FROM ducklake.s1.tbl AT (version => 8)
 ----
 does not exist

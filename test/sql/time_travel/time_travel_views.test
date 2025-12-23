@@ -36,22 +36,22 @@ SELECT * FROM ducklake.v1
 
 # view does not exist
 statement error
-SELECT * FROM ducklake.v1 AT (VERSION => 0)
+SELECT * FROM ducklake.v1 AT (VERSION => 1)
 ----
-does not exist at version 0
-
-query II
-SELECT * FROM ducklake.v1 AT (VERSION => 2)
-----
+does not exist at version 1
 
 query II
 SELECT * FROM ducklake.v1 AT (VERSION => 3)
+----
+
+query II
+SELECT * FROM ducklake.v1 AT (VERSION => 4)
 ----
 100	200
 200	300
 
 query II
-SELECT * FROM ducklake.v1 AT (VERSION => 4)
+SELECT * FROM ducklake.v1 AT (VERSION => 5)
 ----
 100	200
 200	300
@@ -85,18 +85,18 @@ SELECT * FROM ducklake.s1_view
 ----
 
 query I
-SELECT * FROM ducklake.s1_view AT (VERSION => 5)
+SELECT * FROM ducklake.s1_view AT (VERSION => 6)
 ----
 
 query I rowsort
-SELECT * FROM ducklake.s1_view AT (VERSION => 6)
+SELECT * FROM ducklake.s1_view AT (VERSION => 7)
 ----
 42
 84
 
 # explicit time travel clause mentioned in view takes priority over any versioning over the view itself
 statement ok
-CREATE VIEW ducklake.my_view AS SELECT * FROM ducklake.test AT (VERSION => 3)
+CREATE VIEW ducklake.my_view AS SELECT * FROM ducklake.test AT (VERSION => 4)
 
 query II rowsort
 FROM ducklake.my_view
@@ -105,7 +105,7 @@ FROM ducklake.my_view
 2	3
 
 query II rowsort
-FROM ducklake.my_view AT (VERSION => 8)
+FROM ducklake.my_view AT (VERSION => 9)
 ----
 1	2
 2	3

@@ -40,12 +40,13 @@ WHERE key > 5000;
 query II
 SELECT snapshot_id, changes FROM snapshots();
 ----
-0	{schemas_created=[main]}
-1	{tables_created=[main.test]}
-2	{tables_inserted_into=[2]}
-3	{tables_deleted_from=[2]}
+0	{}
+1	{schemas_created=[main]}
+2	{tables_created=[main.test]}
+3	{tables_inserted_into=[2]}
 4	{tables_deleted_from=[2]}
 5	{tables_deleted_from=[2]}
+6	{tables_deleted_from=[2]}
 
 query I
 SELECT delete_file is not null FROM ducklake_list_files('ducklake', 'test')
@@ -169,32 +170,28 @@ SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_rewrite_data/**/*')
 query II
 SELECT snapshot_id, changes FROM snapshots();
 ----
-0	{schemas_created=[main]}
-1	{tables_created=[main.test]}
-2	{tables_inserted_into=[2]}
-3	{tables_deleted_from=[2]}
+0	{}
+1	{schemas_created=[main]}
+2	{tables_created=[main.test]}
+3	{tables_inserted_into=[2]}
 4	{tables_deleted_from=[2]}
 5	{tables_deleted_from=[2]}
-6	{}
-7	{tables_deleted_from=[2]}
-8	{}
-9	{tables_deleted_from=[2]}
-10	{}
-
-query I
-select count(*) from test AT (VERSION => 3);
-----
-9000
+6	{tables_deleted_from=[2]}
+7	{}
+8	{tables_deleted_from=[2]}
+9	{}
+10	{tables_deleted_from=[2]}
+11	{}
 
 query I
 select count(*) from test AT (VERSION => 4);
 ----
-8001
+9000
 
 query I
 select count(*) from test AT (VERSION => 5);
 ----
-4001
+8001
 
 query I
 select count(*) from test AT (VERSION => 6);
@@ -204,7 +201,7 @@ select count(*) from test AT (VERSION => 6);
 query I
 select count(*) from test AT (VERSION => 7);
 ----
-3001
+4001
 
 query I
 select count(*) from test AT (VERSION => 8);
@@ -214,10 +211,15 @@ select count(*) from test AT (VERSION => 8);
 query I
 select count(*) from test AT (VERSION => 9);
 ----
-3000
+3001
 
 query I
 select count(*) from test AT (VERSION => 10);
+----
+3000
+
+query I
+select count(*) from test AT (VERSION => 11);
 ----
 3000
 

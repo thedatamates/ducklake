@@ -43,6 +43,6 @@ SELECT COUNT(*), COUNT(*) FILTER(WHERE id%2=0) FROM ducklake.test
 
 # we can time travel to see the state of the table before deletes
 query II
-SELECT COUNT(*), COUNT(*) FILTER(WHERE id%2=0) FROM ducklake.test AT (VERSION => 2)
+SELECT COUNT(*), COUNT(*) FILTER(WHERE id%2=0) FROM ducklake.test AT (VERSION => 3)
 ----
 2000	1000

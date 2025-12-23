@@ -14,32 +14,32 @@ test-env DATA_PATH __TEST_DIR__
 statement ok
 ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_list_files', CATALOG 'test');
 
-# snapshot 1
+# snapshot 2
 statement ok
 CREATE TABLE ducklake.test(i INTEGER);
 
-# snapshot 2
+# snapshot 3
 statement ok
 INSERT INTO ducklake.test FROM range(100);
 
-# snapshot 3
+# snapshot 4
 statement ok
 INSERT INTO ducklake.test FROM range(100, 200);
 
-# snapshot 4
+# snapshot 5
 statement ok
 INSERT INTO ducklake.test FROM range(200, 300);
 
 # partitions
-# snapshot 5
+# snapshot 6
 statement ok
 CREATE TABLE ducklake.partitioned_tbl(part_key INT, value INT);
 
-# snapshot 6
+# snapshot 7
 statement ok
 ALTER TABLE ducklake.partitioned_tbl SET PARTITIONED BY (part_key);
 
-# snapshot 7
+# snapshot 8
 statement ok
 INSERT INTO ducklake.partitioned_tbl VALUES (1, 50), (2, 100);
 
@@ -75,7 +75,7 @@ SELECT MIN(i), MAX(i), COUNT(*), AVG(i) FROM read_parquet(getvariable('parquet_f
 
 # get a file list at a specified version
 query I
-SELECT COUNT(*) FROM ducklake_list_files('ducklake', 'test', snapshot_version => 2)
+SELECT COUNT(*) FROM ducklake_list_files('ducklake', 'test', snapshot_version => 3)
 ----
 1
 
@@ -113,6 +113,6 @@ does not exist
 
 # cannot specify both snapshot version and time
 statement error
-SELECT COUNT(*) FROM ducklake_list_files('ducklake', 'test', snapshot_version => 2, snapshot_time => NOW())
+SELECT COUNT(*) FROM ducklake_list_files('ducklake', 'test', snapshot_version => 3, snapshot_time => NOW())
 ----
 not both

@@ -57,11 +57,11 @@ analyzed_plan	<REGEX>:.*Total Files Read: 1.*
 
 # query the old partition with time travel
 query I
-SELECT COUNT(*) FROM partitioned_tbl AT (VERSION => 3) WHERE part_key=0
+SELECT COUNT(*) FROM partitioned_tbl AT (VERSION => 4) WHERE part_key=0
 ----
 5000
 
 query II
-EXPLAIN ANALYZE SELECT COUNT(*) FROM partitioned_tbl AT (VERSION => 3) WHERE part_key=0
+EXPLAIN ANALYZE SELECT COUNT(*) FROM partitioned_tbl AT (VERSION => 4) WHERE part_key=0
 ----
 analyzed_plan	<REGEX>:.*Total Files Read: 1.*

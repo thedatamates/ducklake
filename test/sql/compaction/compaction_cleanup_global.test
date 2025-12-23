@@ -28,7 +28,7 @@ statement ok
 DROP TABLE ducklake.test
 
 statement ok
-CALL ducklake_expire_snapshots('ducklake', dry_run => false, versions => [2])
+CALL ducklake_expire_snapshots('ducklake', dry_run => false, versions => [3])
 
 statement ok
 CALL ducklake.set_option('delete_older_than', '1 week')

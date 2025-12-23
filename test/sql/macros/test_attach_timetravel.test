@@ -21,9 +21,10 @@ DROP MACRO simple
 query II
 select snapshot_id, changes FROM snapshots()
 ----
-0	{schemas_created=[main]}
-1	{scalar_macros_created=['main."simple"']}
-2	{scalar_macros_dropped=[2]}
+0	{}
+1	{schemas_created=[main]}
+2	{scalar_macros_created=['main."simple"']}
+3	{scalar_macros_dropped=[2]}
 
 statement error
 select simple(1)
@@ -37,7 +38,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/test_attach_timetravel.db' AS ducklake (DATA_PATH '__TEST_DIR__/test_attach_timetravel', SNAPSHOT_VERSION 1, CATALOG 'test');
+ATTACH 'ducklake:__TEST_DIR__/test_attach_timetravel.db' AS ducklake (DATA_PATH '__TEST_DIR__/test_attach_timetravel', SNAPSHOT_VERSION 2, CATALOG 'test');
 
 statement ok
 use ducklake

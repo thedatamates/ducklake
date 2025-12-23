@@ -99,9 +99,9 @@ ORDER BY snapshot_id DESC LIMIT 1
 
 	query = StringUtil::Format(
 	    "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_changes "
-	    "(snapshot_id, catalog_id, changes_made, author, commit_message, commit_extra_info) "
-	    "VALUES (%llu, %llu, 'forked_from:%llu', NULL, 'Fork catalog', NULL)",
-	    new_snapshot_id, new_catalog_id, parent_catalog_id);
+	    "(snapshot_id, changes_made, author, commit_message, commit_extra_info) "
+	    "VALUES (%llu, 'forked_from:%llu', NULL, 'Fork catalog', NULL)",
+	    new_snapshot_id, parent_catalog_id);
 	result = transaction.Query(query);
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to create snapshot_changes for fork: ");

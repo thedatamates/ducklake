@@ -23,17 +23,17 @@ CREATE MACRO add_one(x INTEGER) AS (x + 1);
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	2	add_one	1	NULL
+0	1	2	add_one	2	NULL
 
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-2	0	duckdb	(x + 1)	scalar
+0	2	0	duckdb	(x + 1)	scalar
 
-query IIIIIII
+query IIIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-2	0	0	x	int32	NULL	unknown
+0	2	0	0	x	int32	NULL	unknown
 
 query I
 select add_one(1)
@@ -49,21 +49,21 @@ CREATE MACRO add_two_def(x INTEGER, y := 5) AS (x + y);
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	2	add_one	1	NULL
-0	1	3	add_two_def	2	NULL
+0	1	2	add_one	2	NULL
+0	1	3	add_two_def	3	NULL
 
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-2	0	duckdb	(x + 1)	scalar
-3	0	duckdb	(x + y)	scalar
+0	2	0	duckdb	(x + 1)	scalar
+0	3	0	duckdb	(x + y)	scalar
 
-query IIIIIII
+query IIIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-2	0	0	x	int32	NULL	unknown
-3	0	0	x	int32	NULL	unknown
-3	0	1	y	unknown	5	int32
+0	2	0	0	x	int32	NULL	unknown
+0	3	0	0	x	int32	NULL	unknown
+0	3	0	1	y	unknown	5	int32
 
 query I
 select add_two_def(1)
@@ -79,24 +79,24 @@ CREATE MACRO add_one_same(x BIGINT := 1) AS (x + 1);
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	2	add_one	1	NULL
-0	1	3	add_two_def	2	NULL
-0	1	4	add_one_same	3	NULL
+0	1	2	add_one	2	NULL
+0	1	3	add_two_def	3	NULL
+0	1	4	add_one_same	4	NULL
 
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-2	0	duckdb	(x + 1)	scalar
-3	0	duckdb	(x + y)	scalar
-4	0	duckdb	(x + 1)	scalar
+0	2	0	duckdb	(x + 1)	scalar
+0	3	0	duckdb	(x + y)	scalar
+0	4	0	duckdb	(x + 1)	scalar
 
-query IIIIIII
+query IIIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-2	0	0	x	int32	NULL	unknown
-3	0	0	x	int32	NULL	unknown
-3	0	1	y	unknown	5	int32
-4	0	0	x	int64	1	int32
+0	2	0	0	x	int32	NULL	unknown
+0	3	0	0	x	int32	NULL	unknown
+0	3	0	1	y	unknown	5	int32
+0	4	0	0	x	int64	1	int32
 
 query I
 select add_two_def(1)

@@ -23,18 +23,18 @@ CREATE MACRO add_default(a, b := 5) AS a + b;
 query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	2	add_default	1	NULL
+0	1	2	add_default	2	NULL
 
-query IIIII
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-2	0	duckdb	(a + b)	scalar
+0	2	0	duckdb	(a + b)	scalar
 
-query IIIIIII
+query IIIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-2	0	0	a	unknown	NULL	unknown
-2	0	1	b	unknown	5	int32
+0	2	0	0	a	unknown	NULL	unknown
+0	2	0	1	b	unknown	5	int32
 
 query I
 select add_default(1)

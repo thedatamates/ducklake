@@ -126,7 +126,7 @@ FROM ducklake.test
 
 # schema-level time travel works, also on files we added here
 query III
-FROM ducklake.test AT (VERSION => 6)
+FROM ducklake.test AT (VERSION => 7)
 ----
 100	hello	NULL
 200	world	NULL
@@ -170,7 +170,7 @@ SELECT col1, col2, col3 FROM ducklake.test
 
 # time travel still works
 query III
-FROM ducklake.test AT (VERSION => 6)
+FROM ducklake.test AT (VERSION => 7)
 ----
 100	hello	NULL
 200	world	NULL

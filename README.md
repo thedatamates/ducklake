@@ -82,15 +82,20 @@ INSERT INTO test VALUES (1, 'hello');
 
 Metadata is stored in a catalog database (DuckDB file, PostgreSQL, or MySQL).
 
-### Core Tables
+### Core Tables (Global)
 
 | Table | Columns |
 |-------|---------|
 | `ducklake_metadata` | key, value, scope, scope_id |
-| `ducklake_catalog` | **catalog_id** (PK), catalog_name (UNIQUE), created_snapshot |
-| `ducklake_snapshot` | **catalog_id**, snapshot_id (PK), snapshot_time, schema_version, next_catalog_id, next_file_id |
-| `ducklake_snapshot_changes` | **catalog_id**, snapshot_id (PK), changes_made, author, commit_message, commit_extra_info |
-| `ducklake_schema` | **catalog_id**, schema_id (PK), schema_uuid, begin_snapshot, end_snapshot, schema_name, path, path_is_relative |
+| `ducklake_snapshot` | snapshot_id (PK), snapshot_time, schema_version, next_catalog_id, next_file_id |
+| `ducklake_snapshot_changes` | snapshot_id (PK), changes_made, author, commit_message, commit_extra_info |
+
+### Catalog & Schema (Per-Catalog)
+
+| Table | Columns |
+|-------|---------|
+| `ducklake_catalog` | **catalog_id**, catalog_uuid, catalog_name, begin_snapshot, end_snapshot |
+| `ducklake_schema` | **catalog_id**, schema_id, schema_uuid, begin_snapshot, end_snapshot, schema_name, path, path_is_relative |
 | `ducklake_schema_versions` | **catalog_id**, begin_snapshot, schema_version |
 
 ### Table & View Definitions
@@ -99,51 +104,51 @@ Metadata is stored in a catalog database (DuckDB file, PostgreSQL, or MySQL).
 |-------|---------|
 | `ducklake_table` | **catalog_id**, table_id, table_uuid, begin_snapshot, end_snapshot, schema_id, table_name, path, path_is_relative |
 | `ducklake_view` | **catalog_id**, view_id, view_uuid, begin_snapshot, end_snapshot, schema_id, view_name, dialect, sql, column_aliases |
-| `ducklake_column` | column_id, begin_snapshot, end_snapshot, table_id, column_order, column_name, column_type, initial_default, default_value, nulls_allowed, parent_column, default_value_type, default_value_dialect |
-| `ducklake_tag` | object_id, begin_snapshot, end_snapshot, key, value |
-| `ducklake_column_tag` | table_id, column_id, begin_snapshot, end_snapshot, key, value |
+| `ducklake_column` | **catalog_id**, column_id, begin_snapshot, end_snapshot, table_id, column_order, column_name, column_type, initial_default, default_value, nulls_allowed, parent_column, default_value_type, default_value_dialect |
+| `ducklake_tag` | **catalog_id**, object_id, begin_snapshot, end_snapshot, key, value |
+| `ducklake_column_tag` | **catalog_id**, table_id, column_id, begin_snapshot, end_snapshot, key, value |
 
 ### Data Files
 
 | Table | Columns |
 |-------|---------|
-| `ducklake_data_file` | data_file_id (PK), table_id, begin_snapshot, end_snapshot, file_order, path, path_is_relative, file_format, record_count, file_size_bytes, footer_size, row_id_start, partition_id, encryption_key, partial_file_info, mapping_id |
-| `ducklake_delete_file` | delete_file_id (PK), table_id, begin_snapshot, end_snapshot, data_file_id, path, path_is_relative, format, delete_count, file_size_bytes, footer_size, encryption_key |
+| `ducklake_data_file` | **catalog_id**, data_file_id, table_id, begin_snapshot, end_snapshot, file_order, path, path_is_relative, file_format, record_count, file_size_bytes, footer_size, row_id_start, partition_id, encryption_key, partial_file_info, mapping_id |
+| `ducklake_delete_file` | **catalog_id**, delete_file_id, table_id, begin_snapshot, end_snapshot, data_file_id, path, path_is_relative, format, delete_count, file_size_bytes, footer_size, encryption_key |
 | `ducklake_files_scheduled_for_deletion` | **catalog_id**, data_file_id, path, path_is_relative, schedule_start |
-| `ducklake_inlined_data_tables` | table_id, table_name, schema_version |
+| `ducklake_inlined_data_tables` | **catalog_id**, table_id, table_name, schema_version |
 
 ### Statistics
 
 | Table | Columns |
 |-------|---------|
 | `ducklake_table_stats` | **catalog_id**, table_id, record_count, next_row_id, file_size_bytes |
-| `ducklake_table_column_stats` | table_id, column_id, contains_null, contains_nan, min_value, max_value, extra_stats |
-| `ducklake_file_column_stats` | data_file_id, table_id, column_id, column_size_bytes, value_count, null_count, min_value, max_value, contains_nan, extra_stats |
+| `ducklake_table_column_stats` | **catalog_id**, table_id, column_id, contains_null, contains_nan, min_value, max_value, extra_stats |
+| `ducklake_file_column_stats` | **catalog_id**, data_file_id, table_id, column_id, column_size_bytes, value_count, null_count, min_value, max_value, contains_nan, extra_stats |
 
 ### Partitioning
 
 | Table | Columns |
 |-------|---------|
 | `ducklake_partition_info` | **catalog_id**, partition_id, table_id, begin_snapshot, end_snapshot |
-| `ducklake_partition_column` | partition_id, table_id, partition_key_index, column_id, transform |
-| `ducklake_file_partition_value` | data_file_id, table_id, partition_key_index, partition_value |
+| `ducklake_partition_column` | **catalog_id**, partition_id, table_id, partition_key_index, column_id, transform |
+| `ducklake_file_partition_value` | **catalog_id**, data_file_id, table_id, partition_key_index, partition_value |
 
 ### Column Mapping
 
 | Table | Columns |
 |-------|---------|
-| `ducklake_column_mapping` | mapping_id, table_id, type |
-| `ducklake_name_mapping` | mapping_id, column_id, source_name, target_field_id, parent_column, is_partition |
+| `ducklake_column_mapping` | **catalog_id**, mapping_id, table_id, type |
+| `ducklake_name_mapping` | **catalog_id**, mapping_id, column_id, source_name, target_field_id, parent_column, is_partition |
 
 ### Macros
 
 | Table | Columns |
 |-------|---------|
 | `ducklake_macro` | **catalog_id**, schema_id, macro_id, macro_name, begin_snapshot, end_snapshot |
-| `ducklake_macro_impl` | macro_id, impl_id, dialect, sql, type |
-| `ducklake_macro_parameters` | macro_id, impl_id, column_id, parameter_name, parameter_type, default_value, default_value_type |
+| `ducklake_macro_impl` | **catalog_id**, macro_id, impl_id, dialect, sql, type |
+| `ducklake_macro_parameters` | **catalog_id**, macro_id, impl_id, column_id, parameter_name, parameter_type, default_value, default_value_type |
 
-**Bold** columns indicate `catalog_id` for multi-tenant isolation. Tables without `catalog_id` are filtered via foreign key joins (e.g., `ducklake_column` is filtered by `table_id` which belongs to a catalog).
+**Bold** columns indicate `catalog_id` for multi-tenant isolation. With global snapshots, the snapshot tables (`ducklake_snapshot`, `ducklake_snapshot_changes`) are shared across all catalogs, while entity tables use composite primary keys for isolation.
 
 ## Data Storage
 
@@ -166,23 +171,17 @@ DATA_PATH/
 ## Design Assumptions
 
 1. **Catalog Name Uniqueness** - Catalog names are unique within a metadata database (enforced by UNIQUE constraint)
-2. **Unified ID Counter** - All entity IDs (catalogs, schemas, tables, views, macros, partitions) come from a single `next_catalog_id` counter
-3. **Initial ID Allocation** - First catalog gets `catalog_id = 0`, main schema gets `schema_id = 1`, `next_catalog_id` starts at 2
-4. **Data Path Isolation** - Each catalog's data is stored in `DATA_PATH/catalog_name/`
-5. **Metadata Isolation** - All metadata queries filter by `catalog_id`
-6. **Snapshot Independence** - Each catalog has its own snapshot sequence (`snapshot_id` unique per catalog, not globally)
-7. **File-Based DuckDB Limitation** - Cannot attach same DuckDB file as metadata for multiple catalogs (use PostgreSQL for shared metadata)
+2. **Global Snapshots** - One snapshot sequence shared by all catalogs (enables forking without ID remapping)
+3. **Unified ID Counter** - All entity IDs (catalogs, schemas, tables, views, macros, partitions) come from a single `next_catalog_id` counter on snapshots
+4. **Composite Primary Keys** - Entity tables use `(catalog_id, entity_id)` composite keys for isolation
+5. **Initial ID Allocation** - First catalog gets `catalog_id = 0`, main schema gets `schema_id = 1`, `next_catalog_id` starts at 2
+6. **Data Path Isolation** - Each catalog's data is stored in `DATA_PATH/catalog_name/`
+7. **Metadata Isolation** - All metadata queries filter by `catalog_id`
+8. **File-Based DuckDB Limitation** - Cannot attach same DuckDB file as metadata for multiple catalogs (use PostgreSQL for shared metadata)
 
-## Version Compatibility
+## Version
 
-| DuckLake Version | Catalog Support | Migration Path |
-|------------------|-----------------|----------------|
-| 0.1 | None | V01 → V02 → V03 → V04 |
-| 0.2 | None | V02 → V03 → V04 |
-| 0.3 | None | V03 → V04 |
-| 0.4-dev1 | BIGINT catalog_id | Current (no migration) |
-
-Migration is automatic when `MIGRATE_IF_REQUIRED = true` (default). MigrateV03 is upstream code (adds macro support), MigrateV04 is our fork (adds catalog_id columns).
+This fork is based on DuckLake 0.3 with significant schema changes for multi-tenant isolation and catalog forking. Migration from upstream DuckLake is automatic when `MIGRATE_IF_REQUIRED = true` (default).
 
 ---
 
@@ -285,6 +284,46 @@ SELECT * FROM table AT SNAPSHOT 5;
 ATTACH 'ducklake:...' AS lake (CATALOG 'x', SNAPSHOT_TIME '2024-01-01 12:00:00');
 SELECT * FROM table AT TIMESTAMP '2024-01-01';
 ```
+
+---
+
+# Catalog Forking
+
+Fork a catalog to create an instant copy that **shares the underlying parquet files**. The fork gets its own metadata but reads from the same physical files as the parent.
+
+## Use Case
+
+- **AI Agents**: Each agent gets an isolated workspace forked from shared data
+- **Experimentation**: Branch a catalog to try changes without affecting the original
+- **Testing**: Create throwaway copies of production data
+
+## How It Works
+
+```sql
+-- Parent catalog with 1TB of data
+ATTACH 'ducklake:postgres:...' AS parent (CATALOG 'shared_data', DATA_PATH '/data/');
+
+-- Instant fork - no data copying!
+SELECT ducklake_fork_catalog('shared_data', 'agent_workspace');
+
+-- Attach the fork with its own DATA_PATH for new writes
+ATTACH 'ducklake:postgres:...' AS workspace (CATALOG 'agent_workspace', DATA_PATH '/data/');
+
+-- Fork can read all parent's data
+SELECT * FROM workspace.main.big_table;  -- Reads parent's parquet files
+
+-- Fork's writes go to its own location
+INSERT INTO workspace.main.results VALUES (...);  -- Writes to /data/agent_workspace/
+```
+
+## Key Points
+
+- **Instant**: Fork copies metadata rows, not terabytes of parquet files
+- **Isolated**: Fork's writes don't affect parent; parent's writes don't affect fork
+- **Safe cleanup**: Deleting a fork doesn't delete shared files still used by parent
+- **Same IDs**: Fork's `data_file_id` values match parent's (same physical files)
+
+For technical details on how forking works (global snapshots, composite keys, etc.), see [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
 
 ---
 
@@ -449,6 +488,7 @@ These perform operations and are called via `CALL`:
 
 | Function | Description |
 |----------|-------------|
+| `ducklake_fork_catalog('parent', 'new_name')` | Create instant copy of a catalog (shares parquet files) |
 | `ducklake_expire_snapshots('catalog', ...)` | Remove old snapshots (keeps files until cleanup) |
 | `ducklake_merge_adjacent_files('catalog', 'table')` | Merge small parquet files into larger ones |
 | `ducklake_rewrite_data_files('catalog', 'table')` | Rewrite files to remove deleted rows |
@@ -553,7 +593,8 @@ ATTACH 'ducklake:...' AS lake (CATALOG 'x', ENCRYPTED true);
 ```sql
 CREATE INDEX idx_schema_catalog ON ducklake_schema(catalog_id);
 CREATE INDEX idx_table_catalog ON ducklake_table(catalog_id);
-CREATE INDEX idx_snapshot_catalog ON ducklake_snapshot(catalog_id);
+CREATE INDEX idx_data_file_catalog ON ducklake_data_file(catalog_id);
+CREATE INDEX idx_snapshot_id ON ducklake_snapshot(snapshot_id DESC);
 ```
 
 ## File Size Tuning

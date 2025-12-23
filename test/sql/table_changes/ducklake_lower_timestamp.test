@@ -30,7 +30,7 @@ statement ok
 insert into repro by name select 3 as foo, '3' as bar, current_timestamp as update_ts;
 
 query I
-SELECT COUNT(*) FROM ducklake.table_changes('repro', 0, 4);
+SELECT COUNT(*) FROM ducklake.table_changes('repro', 0, 5);
 ----
 3
 

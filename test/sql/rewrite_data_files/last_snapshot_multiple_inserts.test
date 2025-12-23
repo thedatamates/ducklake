@@ -79,46 +79,47 @@ select count(*) from test;
 query II
 SELECT snapshot_id, changes FROM snapshots();
 ----
-0	{schemas_created=[main]}
-1	{tables_created=[main.test]}
-2	{tables_inserted_into=[2]}
-3	{tables_deleted_from=[2]}
-4	{tables_inserted_into=[2]}
-5	{tables_deleted_from=[2]}
+0	{}
+1	{schemas_created=[main]}
+2	{tables_created=[main.test]}
+3	{tables_inserted_into=[2]}
+4	{tables_deleted_from=[2]}
+5	{tables_inserted_into=[2]}
 6	{tables_deleted_from=[2]}
-7	{tables_inserted_into=[2]}
-8	{tables_deleted_from=[2]}
-9	{}
+7	{tables_deleted_from=[2]}
+8	{tables_inserted_into=[2]}
+9	{tables_deleted_from=[2]}
+10	{}
 
 loop i 0 2
 
 query I
-select count(*) from test AT (VERSION => 3);
+select count(*) from test AT (VERSION => 4);
 ----
 50
 
 query I
-select count(*) from test AT (VERSION => 4);
+select count(*) from test AT (VERSION => 5);
 ----
 150
 
 query I
-select count(*) from test AT (VERSION => 5);
+select count(*) from test AT (VERSION => 6);
 ----
 120
 
 query I
-select count(*) from test AT (VERSION => 6);
+select count(*) from test AT (VERSION => 7);
 ----
 119
 
 query I
-select count(*) from test AT (VERSION => 7);
+select count(*) from test AT (VERSION => 8);
 ----
 219
 
 query I
-select count(*) from test AT (VERSION => 8);
+select count(*) from test AT (VERSION => 9);
 ----
 170
 

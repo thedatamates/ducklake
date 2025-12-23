@@ -16,11 +16,11 @@ statement ok
 ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/expire_snapshot_global_option', CATALOG 'test')
 
 # delete all values in a table
-# snapshot 1
+# snapshot 2
 statement ok
 CREATE TABLE ducklake.test(i INTEGER)
 
-# snapshot 2
+# snapshot 3
 statement ok
 INSERT INTO ducklake.test FROM range(10)
 
@@ -30,7 +30,7 @@ CALL ducklake.set_option('expire_older_than', '1 millisecond')
 query I
 SELECT count(*) FROM ducklake_expire_snapshots('ducklake', dry_run => true)
 ----
-2
+3
 
 statement ok
 CALL ducklake.set_option('expire_older_than', '1 week')
@@ -41,6 +41,6 @@ SELECT count(*) FROM ducklake_expire_snapshots('ducklake', dry_run => true)
 0
 
 query I
-SELECT count(*) FROM ducklake_expire_snapshots('ducklake', dry_run => true, versions => [1])
+SELECT count(*) FROM ducklake_expire_snapshots('ducklake', dry_run => true, versions => [2])
 ----
 1

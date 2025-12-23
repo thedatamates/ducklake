@@ -49,7 +49,7 @@ encrypted
 
 # all reading still works
 query I
-SELECT * FROM ducklake.test AT (VERSION => 2)
+SELECT * FROM ducklake.test AT (VERSION => 3)
 ----
 1
 

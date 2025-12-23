@@ -18,48 +18,48 @@ ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/du
 statement ok
 CALL ducklake.set_option('target_file_size', '2KB');
 
-# snapshot 1
+# snapshot 2
 statement ok
 CREATE TABLE ducklake.tbl(id INTEGER, str VARCHAR);
 
 # perform a mix of large and small insertions
 
-# snapshot 2
+# snapshot 3
 statement ok
 INSERT INTO ducklake.tbl VALUES (1, 'hello');
 
-# snapshot 3
+# snapshot 4
 statement ok
 INSERT INTO ducklake.tbl SELECT 100000 + i, concat('thisisastring', i) FROM range(10000) t(i)
 
-# snapshot 4
+# snapshot 5
 statement ok
 INSERT INTO ducklake.tbl VALUES (2, 'world');
 
-# snapshot 5
+# snapshot 6
 statement ok
 INSERT INTO ducklake.tbl VALUES (3, 'and');
 
-# snapshot 6
+# snapshot 7
 statement ok
 INSERT INTO ducklake.tbl SELECT 200000 + i, concat('thisisalsoastring', i) FROM range(10000) t(i)
 
-# snapshot 7
+# snapshot 8
 statement ok
 INSERT INTO ducklake.tbl VALUES (3, 'my');
 
-# snapshot 8
+# snapshot 9
 statement ok
 INSERT INTO ducklake.tbl VALUES (3, 'friends');
 
 query IIII
-SELECT rowid, snapshot_id, * FROM ducklake.tbl WHERE snapshot_id NOT IN (3, 6) ORDER BY ALL
+SELECT rowid, snapshot_id, * FROM ducklake.tbl WHERE snapshot_id NOT IN (4, 7) ORDER BY ALL
 ----
-0	2	1	hello
-10001	4	2	world
-10002	5	3	and
-20003	7	3	my
-20004	8	3	friends
+0	3	1	hello
+10001	5	2	world
+10002	6	3	and
+20003	8	3	my
+20004	9	3	friends
 
 # we should have 7 files now
 query I
@@ -82,10 +82,10 @@ SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_compaction_mix_files/**/*.parqu
 
 # all row-ids and snapshots are still intact
 query IIII
-SELECT rowid, snapshot_id, * FROM ducklake.tbl WHERE snapshot_id NOT IN (3, 6) ORDER BY ALL
+SELECT rowid, snapshot_id, * FROM ducklake.tbl WHERE snapshot_id NOT IN (4, 7) ORDER BY ALL
 ----
-0	2	1	hello
-10001	4	2	world
-10002	5	3	and
-20003	7	3	my
-20004	8	3	friends
+0	3	1	hello
+10001	5	2	world
+10002	6	3	and
+20003	8	3	my
+20004	9	3	friends

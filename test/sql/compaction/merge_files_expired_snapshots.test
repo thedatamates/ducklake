@@ -29,10 +29,11 @@ INSERT INTO example (key, value) VALUES ('baz', 'qux');
 query II
 SELECT snapshot_id, changes FROM snapshots();
 ----
-0	{schemas_created=[main]}
-1	{tables_created=[main.example]}
-2	{tables_inserted_into=[2]}
+0	{}
+1	{schemas_created=[main]}
+2	{tables_created=[main.example]}
 3	{tables_inserted_into=[2]}
+4	{tables_inserted_into=[2]}
 
 query I
 SELECT count(*) FROM ducklake_list_files('ducklake', 'example');
@@ -40,7 +41,7 @@ SELECT count(*) FROM ducklake_list_files('ducklake', 'example');
 2
 
 statement ok
-CALL ducklake_expire_snapshots('ducklake', versions => [1,2]);
+CALL ducklake_expire_snapshots('ducklake', versions => [2,3]);
 
 query I
 SELECT count(*) FROM ducklake_list_files('ducklake', 'example');
@@ -91,20 +92,21 @@ SELECT count(*) FROM ducklake_list_files('ducklake', 'example');
 query II
 SELECT snapshot_id, changes FROM snapshots();
 ----
-0	{schemas_created=[main]}
-3	{tables_inserted_into=[2]}
-4	{}
-5	{tables_inserted_into=[2]}
-6	{tables_altered=[2]}
-7	{tables_inserted_into=[2]}
+0	{}
+1	{schemas_created=[main]}
+4	{tables_inserted_into=[2]}
+5	{}
+6	{tables_inserted_into=[2]}
+7	{tables_altered=[2]}
 8	{tables_inserted_into=[2]}
-9	{tables_altered=[2]}
-10	{tables_inserted_into=[2]}
+9	{tables_inserted_into=[2]}
+10	{tables_altered=[2]}
 11	{tables_inserted_into=[2]}
+12	{tables_inserted_into=[2]}
 
 
 statement ok
-CALL ducklake_expire_snapshots('ducklake', versions => [5,6,7,8]);
+CALL ducklake_expire_snapshots('ducklake', versions => [6,7,8,9]);
 
 query I
 SELECT count(*) FROM ducklake_list_files('ducklake', 'example');

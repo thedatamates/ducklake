@@ -40,10 +40,10 @@ SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_partitioned_compact_non_adjacen
 query IIII
 SELECT snapshot_id, rowid, * FROM ducklake.partitioned ORDER BY ALL
 ----
-3	0	1	10
-4	1	2	100
-5	2	1	20
-6	3	2	200
+4	0	1	10
+5	1	2	100
+6	2	1	20
+7	3	2	200
 
 statement ok
 CALL ducklake_merge_adjacent_files('ducklake');
@@ -75,12 +75,12 @@ ORDER BY ALL
 3	2
 
 query II
-SELECT * FROM ducklake.partitioned AT (VERSION => 3)
+SELECT * FROM ducklake.partitioned AT (VERSION => 4)
 ----
 1	10
 
 query II rowsort
-SELECT * FROM ducklake.partitioned AT (VERSION => 4)
+SELECT * FROM ducklake.partitioned AT (VERSION => 5)
 ----
 1	10
 2	100
@@ -88,10 +88,10 @@ SELECT * FROM ducklake.partitioned AT (VERSION => 4)
 query IIII
 SELECT snapshot_id, rowid, * FROM ducklake.partitioned ORDER BY ALL
 ----
-3	0	1	10
-4	1	2	100
-5	2	1	20
-6	3	2	200
+4	0	1	10
+5	1	2	100
+6	2	1	20
+7	3	2	200
 
 # insert and compact again
 statement ok
@@ -109,14 +109,14 @@ INSERT INTO ducklake.partitioned VALUES (2, 400);
 query IIII
 SELECT snapshot_id, rowid, * FROM ducklake.partitioned ORDER BY ALL
 ----
-3	0	1	10
-4	1	2	100
-5	2	1	20
-6	3	2	200
-8	4	1	30
-9	5	2	300
-10	6	1	40
-11	7	2	400
+4	0	1	10
+5	1	2	100
+6	2	1	20
+7	3	2	200
+9	4	1	30
+10	5	2	300
+11	6	1	40
+12	7	2	400
 
 # we're back up to 6 files
 query I
@@ -141,11 +141,11 @@ SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_partitioned_compact_non_adjacen
 query IIII
 SELECT snapshot_id, rowid, * FROM ducklake.partitioned ORDER BY ALL
 ----
-3	0	1	10
-4	1	2	100
-5	2	1	20
-6	3	2	200
-8	4	1	30
-9	5	2	300
-10	6	1	40
-11	7	2	400
+4	0	1	10
+5	1	2	100
+6	2	1	20
+7	3	2	200
+9	4	1	30
+10	5	2	300
+11	6	1	40
+12	7	2	400

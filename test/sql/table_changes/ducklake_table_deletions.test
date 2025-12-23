@@ -14,39 +14,39 @@ test-env DATA_PATH __TEST_DIR__
 statement ok
 ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_table_deletions_files', CATALOG 'test')
 
-# snapshot 1
+# snapshot 2
 statement ok
 CREATE TABLE ducklake.test(i INTEGER);
 
-# snapshot 2
+# snapshot 3
 statement ok
 INSERT INTO ducklake.test VALUES (1)
 
-# snapshot 3
+# snapshot 4
 statement ok
 INSERT INTO ducklake.test VALUES (2)
 
-# snapshot 4
+# snapshot 5
 statement ok
 INSERT INTO ducklake.test VALUES (3)
 
-# snapshot 5
+# snapshot 6
 statement ok
 INSERT INTO ducklake.test VALUES (NULL)
 
-# snapshot 6
+# snapshot 7
 statement ok
 INSERT INTO ducklake.test FROM range(10, 15)
 
-# snapshot 7
+# snapshot 8
 statement ok
 DELETE FROM ducklake.test WHERE i=2
 
-# snapshot 8
+# snapshot 9
 statement ok
 DELETE FROM ducklake.test WHERE i=11
 
-# snapshot 9
+# snapshot 10
 statement ok
 DELETE FROM ducklake.test WHERE i=12
 
@@ -60,47 +60,47 @@ FROM ducklake.test ORDER BY ALL
 14
 NULL
 
-# snapshot 7 deleted i=2
-query III
-SELECT rowid, snapshot_id, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 7, 7);
-----
-1	7	2
-
-# snapshot 8 deleted i=11
+# snapshot 8 deleted i=2
 query III
 SELECT rowid, snapshot_id, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 8, 8);
 ----
-5	8	11
+1	8	2
 
-# snapshot 9 deleted i=12
+# snapshot 9 deleted i=11
 query III
 SELECT rowid, snapshot_id, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 9, 9);
 ----
-6	9	12
+5	9	11
+
+# snapshot 10 deleted i=12
+query III
+SELECT rowid, snapshot_id, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 10, 10);
+----
+6	10	12
 
 # we can get all of these at once
 query III
-SELECT rowid, snapshot_id, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 7, 9) ORDER BY rowid
+SELECT rowid, snapshot_id, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 8, 10) ORDER BY rowid
 ----
-1	7	2
-5	8	11
-6	9	12
+1	8	2
+5	9	11
+6	10	12
 
 # this shows all deletions performed
 query II
-SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 0, 9) ORDER BY rowid
+SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 0, 10) ORDER BY rowid
 ----
 1	2
 5	11
 6	12
 
-# snapshot 10: update a subset of the rows
+# snapshot 11: update a subset of the rows
 statement ok
 UPDATE ducklake.test SET i=i+100 WHERE i < 13
 
 # updates are deletions + insertions
 query II
-SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 10, 10) ORDER BY rowid
+SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 11, 11) ORDER BY rowid
 ----
 0	1
 2	3
@@ -108,7 +108,7 @@ SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 10, 10
 
 # these are all the deleted tuples
 query II
-SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 7, 10) ORDER BY rowid
+SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 8, 11) ORDER BY rowid
 ----
 0	1
 1	2
@@ -121,7 +121,7 @@ statement ok
 DELETE FROM ducklake.test
 
 query II
-SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 11, 11) ORDER BY rowid
+SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 12, 12) ORDER BY rowid
 ----
 0	101
 2	103
@@ -133,7 +133,7 @@ SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 11, 11
 
 # if we update and then delete - the same row can be there multiple times
 query II
-SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 0, 11) ORDER BY ALL
+SELECT rowid, * FROM ducklake_table_deletions('ducklake', 'main', 'test', 0, 12) ORDER BY ALL
 ----
 0	1
 0	101

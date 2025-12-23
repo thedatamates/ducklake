@@ -22,7 +22,7 @@ DETACH ducklake
 
 # attach at snapshot
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/ducklake_attach_at_snapshot.db' AS ducklake (SNAPSHOT_VERSION 1, CATALOG 'test')
+ATTACH 'ducklake:__TEST_DIR__/ducklake_attach_at_snapshot.db' AS ducklake (SNAPSHOT_VERSION 2, CATALOG 'test')
 
 query II
 FROM ducklake.test
@@ -39,18 +39,18 @@ DETACH ducklake
 
 # snapshot does not exist
 statement error
-ATTACH 'ducklake:__TEST_DIR__/ducklake_attach_at_snapshot.db' AS ducklake (SNAPSHOT_VERSION 33, CATALOG 'test')
+ATTACH 'ducklake:__TEST_DIR__/ducklake_attach_at_snapshot.db' AS ducklake (SNAPSHOT_VERSION 34, CATALOG 'test')
 ----
-No snapshot found at version 33
+No snapshot found at version 34
 
 # cannot open a database at a specified snapshot in read_write mode
 statement error
-ATTACH 'ducklake:__TEST_DIR__/ducklake_attach_at_snapshot.db' AS ducklake (SNAPSHOT_VERSION 1, READ_WRITE, CATALOG 'test')
+ATTACH 'ducklake:__TEST_DIR__/ducklake_attach_at_snapshot.db' AS ducklake (SNAPSHOT_VERSION 2, READ_WRITE, CATALOG 'test')
 ----
 can only be used in read-only mode
 
 # cannot combine snapshot_version/snapshot_time
 statement error
-ATTACH 'ducklake:__TEST_DIR__/ducklake_attach_at_snapshot.db' AS ducklake (SNAPSHOT_VERSION 1, SNAPSHOT_TIME '2020-01-01', CATALOG 'test')
+ATTACH 'ducklake:__TEST_DIR__/ducklake_attach_at_snapshot.db' AS ducklake (SNAPSHOT_VERSION 2, SNAPSHOT_TIME '2020-01-01', CATALOG 'test')
 ----
 Cannot specify both VERSION and TIMESTAMP

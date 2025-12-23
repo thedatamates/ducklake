@@ -15,48 +15,48 @@ statement ok
 ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_expire_snapshots_drop_table_files', METADATA_CATALOG 'metadata', CATALOG 'test')
 
 # delete all values in a table
-# snapshot 1
+# snapshot 2
 statement ok
 CREATE TABLE ducklake.test(i INTEGER)
 
-# snapshot 2
+# snapshot 3
 statement ok
 INSERT INTO ducklake.test FROM range(1000)
 
-# snapshot 3
+# snapshot 4
 statement ok
 DELETE FROM ducklake.test WHERE i%4=0
 
-# snapshot 4
+# snapshot 5
 statement ok
 DELETE FROM ducklake.test WHERE i%2=0
 
-# snapshot 5
+# snapshot 6
 statement ok
 DROP TABLE ducklake.test
 
-# we have 3 files now (insert from snapshot 2, delete from snapshot 3, delete from snapshot 4)
+# we have 3 files now (insert from snapshot 3, delete from snapshot 4, delete from snapshot 5)
 query I
 SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_expire_snapshots_drop_table_files/test/main/test/*')
 ----
 3
 
-# explicitly expire snapshot 3 and cleanup files
+# explicitly expire snapshot 4 and cleanup files
 statement ok
-CALL ducklake_expire_snapshots('ducklake', versions => [3])
+CALL ducklake_expire_snapshots('ducklake', versions => [4])
 
 statement ok
 CALL ducklake_cleanup_old_files('ducklake', cleanup_all => true);
 
-# the deletes from snapshot 3 should now be gone
+# the deletes from snapshot 4 should now be gone
 query I
 SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_expire_snapshots_drop_table_files/test/main/test/*')
 ----
 2
 
-# now expire snapshots 1, 2 and 4 - this should fully remove all traces of the table
+# now expire snapshots 2, 3 and 5 - this should fully remove all traces of the table
 statement ok
-CALL ducklake_expire_snapshots('ducklake', versions => [1, 2, 4])
+CALL ducklake_expire_snapshots('ducklake', versions => [2, 3, 5])
 
 statement ok
 CALL ducklake_cleanup_old_files('ducklake', cleanup_all => true);

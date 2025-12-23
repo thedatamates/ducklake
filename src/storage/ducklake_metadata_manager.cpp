@@ -75,6 +75,7 @@ void DuckLakeMetadataManager::InitializeDuckLake(bool has_explicit_schema, DuckL
 
 void DuckLakeMetadataManager::CreateDuckLakeSchema(DuckLakeEncryption encryption) {
 	auto schema_sql = R"(
+CREATE SCHEMA IF NOT EXISTS {METADATA_CATALOG};
 CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_metadata(
     key VARCHAR NOT NULL,
     value VARCHAR NOT NULL,
@@ -90,7 +91,6 @@ CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot(
 );
 CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot_changes(
     snapshot_id BIGINT PRIMARY KEY,
-    catalog_id BIGINT NOT NULL,
     changes_made VARCHAR,
     author VARCHAR,
     commit_message VARCHAR,
@@ -443,7 +443,7 @@ idx_t DuckLakeMetadataManager::CreateCatalog(const string &catalog_name) {
 	auto catalog_name_literal = DuckLakeUtil::SQLLiteralToString(catalog_name);
 
 	string query = R"(
-SELECT snapshot_id, next_catalog_id, next_file_id
+SELECT snapshot_id, schema_version, next_catalog_id, next_file_id
 FROM {METADATA_CATALOG}.ducklake_snapshot
 ORDER BY snapshot_id DESC LIMIT 1
 )";
@@ -456,14 +456,27 @@ ORDER BY snapshot_id DESC LIMIT 1
 		throw IOException("No snapshots found. The schema must be initialized first.");
 	}
 	idx_t current_snapshot_id = chunk->GetValue(0, 0).GetValue<idx_t>();
-	idx_t new_catalog_id = chunk->GetValue(1, 0).GetValue<idx_t>();
+	idx_t schema_version = chunk->GetValue(1, 0).GetValue<idx_t>();
+	idx_t new_catalog_id = chunk->GetValue(2, 0).GetValue<idx_t>();
+	idx_t next_file_id = chunk->GetValue(3, 0).GetValue<idx_t>();
 	idx_t main_schema_id = new_catalog_id + 1;
-	idx_t next_catalog_id = new_catalog_id + 2;
+	idx_t updated_next_catalog_id = new_catalog_id + 2;
+	idx_t new_snapshot_id = current_snapshot_id + 1;
+
+	query = StringUtil::Format(
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot "
+	    "(snapshot_id, snapshot_time, schema_version, next_catalog_id, next_file_id) "
+	    "VALUES (%llu, NOW(), %llu, %llu, %llu)",
+	    new_snapshot_id, schema_version, updated_next_catalog_id, next_file_id);
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to create snapshot for catalog: ");
+	}
 
 	query = StringUtil::Format(
 	    "INSERT INTO {METADATA_CATALOG}.ducklake_catalog (catalog_id, catalog_uuid, catalog_name, begin_snapshot, end_snapshot) "
 	    "VALUES (%llu, UUID(), %s, %llu, NULL)",
-	    new_catalog_id, catalog_name_literal, current_snapshot_id);
+	    new_catalog_id, catalog_name_literal, new_snapshot_id);
 	result = transaction.Query(query);
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to create catalog: ");
@@ -472,30 +485,31 @@ ORDER BY snapshot_id DESC LIMIT 1
 	query = StringUtil::Format(
 	    "INSERT INTO {METADATA_CATALOG}.ducklake_schema_versions (catalog_id, begin_snapshot, schema_version) "
 	    "VALUES (%llu, %llu, 0)",
-	    new_catalog_id, current_snapshot_id);
+	    new_catalog_id, new_snapshot_id);
 	result = transaction.Query(query);
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to create schema_versions entry: ");
 	}
 
-	query = StringUtil::Format(
-	    "UPDATE {METADATA_CATALOG}.ducklake_snapshot "
-	    "SET next_catalog_id = %llu "
-	    "WHERE snapshot_id = %llu",
-	    next_catalog_id, current_snapshot_id);
-	result = transaction.Query(query);
-	if (result->HasError()) {
-		result->GetErrorObject().Throw("Failed to update snapshot next_catalog_id: ");
-	}
-
+	auto schema_path = catalog_name + "/main/";
 	query = StringUtil::Format(
 	    "INSERT INTO {METADATA_CATALOG}.ducklake_schema "
 	    "(catalog_id, schema_id, schema_uuid, begin_snapshot, end_snapshot, schema_name, path, path_is_relative) "
-	    "VALUES (%llu, %llu, UUID(), %llu, NULL, 'main', 'main/', true)",
-	    new_catalog_id, main_schema_id, current_snapshot_id);
+	    "VALUES (%llu, %llu, UUID(), %llu, NULL, 'main', '%s', true)",
+	    new_catalog_id, main_schema_id, new_snapshot_id, schema_path.c_str());
 	result = transaction.Query(query);
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to create main schema: ");
+	}
+
+	query = StringUtil::Format(
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_changes "
+	    "(snapshot_id, changes_made, author, commit_message, commit_extra_info) "
+	    "VALUES (%llu, 'created_schema:\"main\"', NULL, NULL, NULL)",
+	    new_snapshot_id);
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to record schema creation: ");
 	}
 
 	return new_catalog_id;
@@ -2015,7 +2029,7 @@ INSERT INTO {METADATA_CATALOG}.ducklake_macro (catalog_id, schema_id, macro_id, 
 		for (idx_t impl_id = 0; impl_id < macro.implementations.size(); ++impl_id) {
 			auto &impl = macro.implementations[impl_id];
 			batch_query += StringUtil::Format(R"(
-INSERT INTO {METADATA_CATALOG}.ducklake_macro_impl values(%llu,%llu,'%s','%s','%s');
+INSERT INTO {METADATA_CATALOG}.ducklake_macro_impl values({CATALOG_ID},%llu,%llu,'%s','%s','%s');
 )",
 			                                                               macro.macro_id.index, impl_id, impl.dialect,
 			                                                               impl.sql, impl.type);
@@ -2025,7 +2039,7 @@ INSERT INTO {METADATA_CATALOG}.ducklake_macro_impl values(%llu,%llu,'%s','%s','%
 				auto &param = impl.parameters[param_id];
 				batch_query +=
 				    StringUtil::Format(R"(
-INSERT INTO {METADATA_CATALOG}.ducklake_macro_parameters values(%llu,%llu,%llu,'%s','%s','%s', '%s');
+INSERT INTO {METADATA_CATALOG}.ducklake_macro_parameters values({CATALOG_ID},%llu,%llu,%llu,'%s','%s','%s', '%s');
 )",
 				                       macro.macro_id.index, impl_id, param_id, param.parameter_name,
 				                       param.parameter_type, param.default_value.ToString(), param.default_value_type);
@@ -2643,7 +2657,7 @@ string DuckLakeMetadataManager::WriteNewColumnMappings(const vector<DuckLakeColu
 			column_mapping_insert_query += ", ";
 		}
 		column_mapping_insert_query +=
-		    StringUtil::Format("(%d, %d, %s)", column_mapping.mapping_id.index, column_mapping.table_id.index,
+		    StringUtil::Format("({CATALOG_ID}, %d, %d, %s)", column_mapping.mapping_id.index, column_mapping.table_id.index,
 		                       SQLString(column_mapping.map_type));
 		for (auto &name_map_column : column_mapping.map_columns) {
 			if (!name_map_insert_query.empty()) {
@@ -2653,7 +2667,7 @@ string DuckLakeMetadataManager::WriteNewColumnMappings(const vector<DuckLakeColu
 			    name_map_column.parent_column.IsValid() ? to_string(name_map_column.parent_column.GetIndex()) : "NULL";
 			string is_partition = name_map_column.hive_partition ? "true" : "false";
 			name_map_insert_query +=
-			    StringUtil::Format("(%d, %d, %s, %d, %s, %s)", column_mapping.mapping_id.index,
+			    StringUtil::Format("({CATALOG_ID}, %d, %d, %s, %d, %s, %s)", column_mapping.mapping_id.index,
 			                       name_map_column.column_id, SQLString(name_map_column.source_name),
 			                       name_map_column.target_field_id.index, parent_column, is_partition);
 		}
@@ -2678,7 +2692,7 @@ static string SQLStringOrNull(const string &str) {
 string DuckLakeMetadataManager::WriteSnapshotChanges(const SnapshotChangeInfo &change_info,
                                                      const DuckLakeSnapshotCommit &commit_info) {
 	return StringUtil::Format(
-	    R"(INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_changes (snapshot_id, catalog_id, changes_made, author, commit_message, commit_extra_info) VALUES ({SNAPSHOT_ID}, {CATALOG_ID}, %s, %s, %s, %s);)",
+	    R"(INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_changes (snapshot_id, changes_made, author, commit_message, commit_extra_info) VALUES ({SNAPSHOT_ID}, %s, %s, %s, %s);)",
 	    SQLStringOrNull(change_info.changes_made), commit_info.author.ToSQLString(),
 	    commit_info.commit_message.ToSQLString(), commit_info.commit_extra_info.ToSQLString());
 }
@@ -2694,7 +2708,7 @@ SELECT
     COALESCE((
             SELECT STRING_AGG(changes_made, '')
             FROM {METADATA_CATALOG}.ducklake_snapshot_changes c
-            WHERE c.catalog_id = {CATALOG_ID} AND c.snapshot_id > {SNAPSHOT_ID}
+            WHERE c.snapshot_id > {SNAPSHOT_ID}
             ),'') AS changes,
     NULL AS table_id,
     NULL AS column_id,
@@ -3093,7 +3107,7 @@ vector<DuckLakeSnapshotInfo> DuckLakeMetadataManager::GetAllSnapshots(const stri
 SELECT s.snapshot_id, s.snapshot_time, s.schema_version, sc.changes_made, sc.author, sc.commit_message, sc.commit_extra_info
 FROM {METADATA_CATALOG}.ducklake_snapshot s
 LEFT JOIN {METADATA_CATALOG}.ducklake_snapshot_changes sc
-    ON s.snapshot_id = sc.snapshot_id AND sc.catalog_id = {CATALOG_ID}
+    ON s.snapshot_id = sc.snapshot_id
 %s
 ORDER BY s.snapshot_id
 )",

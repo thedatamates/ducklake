@@ -46,8 +46,8 @@ statement ok
 CALL ducklake_merge_adjacent_files('ducklake', 't');
 
 # State now:
-# - File A (ids 0-4999): NO partial_file_info, begin_snapshot=2
-# - Merged BC (ids 5000-5199): HAS partial_file_info, begin_snapshot=3
+# - File A (ids 0-4999): NO partial_file_info, begin_snapshot=3
+# - Merged BC (ids 5000-5199): HAS partial_file_info, begin_snapshot=4
 query I
 SELECT COUNT(*) FROM ducklake_list_files('ducklake', 't') WHERE delete_file IS NULL;
 ----
@@ -58,7 +58,7 @@ query I
 SELECT partial_file_info FROM __ducklake_metadata_ducklake.ducklake_data_file WHERE end_snapshot IS NULL;
 ----
 NULL
-3:100|4:200
+4:100|5:200
 
 statement ok
 INSERT INTO t SELECT i + 5200, 'small3' FROM range(10) t(i);
@@ -75,9 +75,9 @@ statement ok
 CALL ducklake_merge_adjacent_files('ducklake', 't');
 
 # State now:
-# - File A (ids 0-4999): NO partial_file_info, begin_snapshot=2
-# - Merged BC (ids 5000-5199): HAS partial_file_info, begin_snapshot=3
-# - Merged DE (ids 5200-5219): HAS partial_file_info, begin_snapshot=4
+# - File A (ids 0-4999): NO partial_file_info, begin_snapshot=3
+# - Merged BC (ids 5000-5199): HAS partial_file_info, begin_snapshot=4
+# - Merged DE (ids 5200-5219): HAS partial_file_info, begin_snapshot=5
 query I
 SELECT COUNT(*) FROM ducklake_list_files('ducklake', 't') WHERE delete_file IS NULL;
 ----
@@ -87,8 +87,8 @@ query I
 SELECT partial_file_info FROM __ducklake_metadata_ducklake.ducklake_data_file WHERE end_snapshot IS NULL;
 ----
 NULL
-3:100|4:200
-6:10|7:20
+4:100|5:200
+7:10|8:20
 
 # Delete from file A (no partial_file_info)
 statement ok
@@ -119,17 +119,17 @@ SELECT COUNT(*) FROM ducklake_list_files('ducklake', 't');
 # Ensure the time-travel works
 query II
 SELECT * FROM (
-  SELECT '01_count_after_init' as version, COUNT(*) FROM t AT (VERSION => 1)
-  UNION SELECT '02_count_after_A' as version, COUNT(*) FROM t AT (VERSION => 2)
-  UNION SELECT '03_count_after_B' as version, COUNT(*) FROM t AT (VERSION => 3)
-  UNION SELECT '04_count_after_C' as version, COUNT(*) FROM t AT (VERSION => 4)
-  UNION SELECT '05_count_after_BC' as version, COUNT(*) FROM t AT (VERSION => 5)
-  UNION SELECT '06_count_after_D' as version, COUNT(*) FROM t AT (VERSION => 6)
-  UNION SELECT '07_count_after_E' as version, COUNT(*) FROM t AT (VERSION => 7)
-  UNION SELECT '08_count_after_DE' as version, COUNT(*) FROM t AT (VERSION => 8)
-  UNION SELECT '09_count_after_delete_from_A' as version, COUNT(*) FROM t AT (VERSION => 9)
-  UNION SELECT '10_count_after_delete_from_BC' as version, COUNT(*) FROM t AT (VERSION => 10)
-  UNION SELECT '11_count_after_rewrite' as version, COUNT(*) FROM t AT (VERSION => 11)
+  SELECT '01_count_after_init' as version, COUNT(*) FROM t AT (VERSION => 2)
+  UNION SELECT '02_count_after_A' as version, COUNT(*) FROM t AT (VERSION => 3)
+  UNION SELECT '03_count_after_B' as version, COUNT(*) FROM t AT (VERSION => 4)
+  UNION SELECT '04_count_after_C' as version, COUNT(*) FROM t AT (VERSION => 5)
+  UNION SELECT '05_count_after_BC' as version, COUNT(*) FROM t AT (VERSION => 6)
+  UNION SELECT '06_count_after_D' as version, COUNT(*) FROM t AT (VERSION => 7)
+  UNION SELECT '07_count_after_E' as version, COUNT(*) FROM t AT (VERSION => 8)
+  UNION SELECT '08_count_after_DE' as version, COUNT(*) FROM t AT (VERSION => 9)
+  UNION SELECT '09_count_after_delete_from_A' as version, COUNT(*) FROM t AT (VERSION => 10)
+  UNION SELECT '10_count_after_delete_from_BC' as version, COUNT(*) FROM t AT (VERSION => 11)
+  UNION SELECT '11_count_after_rewrite' as version, COUNT(*) FROM t AT (VERSION => 12)
   UNION SELECT '12_final' as version, COUNT(*) FROM t
 ) ORDER BY version ASC;
 ----

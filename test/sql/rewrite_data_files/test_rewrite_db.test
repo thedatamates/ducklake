@@ -94,48 +94,48 @@ SELECT data_file_id, begin_snapshot, end_snapshot FROM ducklake_metadata.ducklak
 
 # Validate some results
 query I
-select count(*) from test_0 AT (VERSION => 3);
+select count(*) from test_0 AT (VERSION => 4);
 ----
 50
 
 query I
-select count(*) from test_0 AT (VERSION => 4);
+select count(*) from test_0 AT (VERSION => 5);
 ----
 150
 
 query I
-select count(*) from test_0 AT (VERSION => 5);
+select count(*) from test_0 AT (VERSION => 6);
 ----
 120
 
 query I
-select count(*) from test_0 AT (VERSION => 6);
+select count(*) from test_0 AT (VERSION => 7);
 ----
 119
 
 # Check other table
 query I
-select count(*) from test_1 AT (VERSION => 8);
+select count(*) from test_1 AT (VERSION => 9);
 ----
 100
 
 query I
-select count(*) from test_1 AT (VERSION => 9);
+select count(*) from test_1 AT (VERSION => 10);
 ----
 50
 
 query I
-select count(*) from test_1 AT (VERSION => 10);
+select count(*) from test_1 AT (VERSION => 11);
 ----
 150
 
 query I
-select count(*) from test_1 AT (VERSION => 11);
+select count(*) from test_1 AT (VERSION => 12);
 ----
 120
 
 query I
-select count(*) from test_1 AT (VERSION => 12);
+select count(*) from test_1 AT (VERSION => 13);
 ----
 119
 
