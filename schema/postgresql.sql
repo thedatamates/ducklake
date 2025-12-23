@@ -14,8 +14,7 @@ CREATE TABLE ducklake_snapshot(
 );
 
 CREATE TABLE ducklake_snapshot_changes(
-    snapshot_id BIGINT PRIMARY KEY REFERENCES ducklake_snapshot(snapshot_id),
-    catalog_id BIGINT NOT NULL,
+    snapshot_id BIGINT PRIMARY KEY,
     changes_made VARCHAR,
     author VARCHAR,
     commit_message VARCHAR,
