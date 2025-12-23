@@ -365,6 +365,132 @@ The only C++ dependency is calling `transaction.Query()`. That's trivially bridg
 
 ---
 
+## Rust Ecosystem Dependencies
+
+A Rust implementation can use native Rust crates instead of going through DuckDB for many operations:
+
+```toml
+[dependencies]
+arrow = "53"
+parquet = "53"
+object_store = { version = "0.11", features = ["aws", "gcp", "azure"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
+tokio = { version = "1", features = ["full"] }
+cxx = "1.0"
+```
+
+| Crate | Purpose |
+|-------|---------|
+| `arrow` | Arrow arrays for columnar data |
+| `parquet` | Read/write Parquet files directly |
+| `object_store` | Unified interface for local/S3/GCS/Azure storage |
+| `sqlx` | PostgreSQL client for metadata catalog |
+| `tokio` | Async runtime |
+| `cxx` | C++/Rust interop bridge |
+
+---
+
+## Data Plane vs Metadata Plane
+
+DuckLake has two distinct planes with different requirements:
+
+### Metadata Plane (PostgreSQL/DuckDB Catalog)
+
+Simple CRUD operations against the metadata store:
+- "Get all tables in schema"
+- "Insert new snapshot record"
+- "Update file statistics"
+
+**Rust approach:** Use native crates (`sqlx` for PostgreSQL, `duckdb-rs` for DuckDB metadata). No need to go through DuckDB's postgres_scanner or internal APIs. A native client is cleaner for programmatic access.
+
+### Data Plane (Parquet Files)
+
+Reading and writing the actual data:
+- Query scans read Parquet files
+- INSERT/UPDATE/DELETE write new Parquet files
+
+**Rust approach - Reads:** Let DuckDB handle scans. DuckLake provides file lists via `MultiFileList`, DuckDB's query engine does the actual Parquet reading with filter pushdown, projection pushdown, and parallelization.
+
+**Rust approach - Writes:** Use the `parquet` crate directly. When handling INSERT, write Parquet files using Rust, then register them in the metadata catalog.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        DuckLake Rust Core                        │
+├─────────────────────────────────┬───────────────────────────────┤
+│         Metadata Plane          │          Data Plane           │
+├─────────────────────────────────┼───────────────────────────────┤
+│  sqlx (PostgreSQL)              │  Reads: DuckDB (via file list)│
+│  duckdb-rs (DuckDB metadata)    │  Writes: parquet crate        │
+│  object_store (file listings)   │  object_store (S3/GCS/Azure)  │
+└─────────────────────────────────┴───────────────────────────────┘
+```
+
+This split is cleaner than the C++ version, which piggybacks on DuckDB's postgres_scanner extension for metadata access.
+
+---
+
+## Async Rust Integration
+
+DuckDB's extension callbacks are **synchronous**. When DuckDB calls `Sink()` or `GetData()`, it blocks waiting for the return. This creates friction with Rust's async ecosystem.
+
+### The Problem
+
+Many Rust crates are async-only:
+- `object_store` (S3/GCS/Azure)
+- `sqlx` (PostgreSQL)
+- `reqwest` (HTTP)
+
+You cannot `.await` in a function called synchronously from C++.
+
+### Solution: Shared Runtime with block_on
+
+Create a single tokio runtime at extension load, use `block_on` for individual calls:
+
+```rust
+use once_cell::sync::Lazy;
+use tokio::runtime::Runtime;
+
+static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+    Runtime::new().expect("Failed to create tokio runtime")
+});
+
+fn sink(&self, chunk: &DataChunk) -> Result<()> {
+    RUNTIME.block_on(async {
+        self.write_to_s3(&chunk).await?;
+        self.update_metadata().await
+    })
+}
+```
+
+### Sync Alternatives
+
+For some operations, sync crates exist:
+
+| Async Crate | Sync Alternative |
+|-------------|------------------|
+| `tokio-postgres` | `postgres` |
+| `reqwest` | `ureq` |
+| `sqlx` | `postgres` (for simple queries) |
+
+The `parquet` crate has sync APIs. Use sync where possible, async with `block_on` where necessary.
+
+### Background Tasks
+
+For truly concurrent operations (e.g., flushing Parquet files while accepting more data), spawn tasks on the runtime:
+
+```rust
+fn flush_async(&self) {
+    let data = self.pending_data.clone();
+    RUNTIME.spawn(async move {
+        write_parquet_to_s3(data).await;
+    });
+}
+```
+
+Use channels to coordinate between sync callbacks and background tasks.
+
+---
+
 ## Types to Bridge
 
 ### Simple Types (Direct mapping)
