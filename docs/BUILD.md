@@ -1,27 +1,38 @@
 # Building DuckLake
 
-## Quick Start
+This is a fork of [duckdb/ducklake](https://github.com/duckdb/ducklake) with additional features:
+- Multi-tenant catalog isolation
+- Catalog forking
+- Global snapshots
 
+## Released vs Development Version
+
+**Released DuckLake** (works with DuckDB v1.3.0+):
+```sql
+INSTALL ducklake;
+LOAD ducklake;
+```
+
+This installs the official released version from the DuckDB extension repository.
+
+**This fork** (requires building from source):
 ```bash
 make release
 ./build/release/duckdb -unsigned
 ```
 
-```sql
-LOAD 'build/release/extension/ducklake/ducklake.duckdb_extension';
-CREATE TABLE test (x INT);
-```
+The fork includes features not yet in the released version and tracks DuckDB's development branch.
 
-## DuckDB Version
+## Why Build From Source?
 
-DuckLake requires APIs introduced after DuckDB v1.4.3, so it currently tracks the v1.5.0 development branch. Once DuckDB v1.5.0 is released, DuckLake will pin to that stable version.
+Both the upstream `duckdb/ducklake` main branch and this fork track DuckDB's v1.5.0 development branch. The code uses APIs (like `QueryResultRow::GetRowInChunk()`) that don't exist in released DuckDB versions.
 
 ```bash
 git -C duckdb describe --tags
 # v1.4.2-3132-g5d5d04f418  (v1.5.0-dev)
 ```
 
-Until then, you must use the DuckDB binary built with the project.
+Once DuckDB v1.5.0 is released, upstream will likely pin to it and release a new extension version. Until then, building from source requires using the bundled DuckDB binary.
 
 ## Build Targets
 
