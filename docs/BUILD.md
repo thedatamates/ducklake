@@ -14,14 +14,14 @@ CREATE TABLE test (x INT);
 
 ## DuckDB Version
 
-DuckLake is built against a DuckDB development version (currently v1.5.0-dev, commit `5d5d04f418`). This is pinned via the `duckdb` git submodule.
+DuckLake requires APIs introduced after DuckDB v1.4.3, so it currently tracks the v1.5.0 development branch. Once DuckDB v1.5.0 is released, DuckLake will pin to that stable version.
 
 ```bash
 git -C duckdb describe --tags
-# v1.4.2-3132-g5d5d04f418
+# v1.4.2-3132-g5d5d04f418  (v1.5.0-dev)
 ```
 
-The extension uses APIs that don't exist in released DuckDB versions (v1.4.3 and earlier), so you must use the DuckDB binary built with the project.
+Until then, you must use the DuckDB binary built with the project.
 
 ## Build Targets
 
