@@ -150,13 +150,20 @@ Rebuild with `ENABLE_POSTGRES_SCANNER=1 make release`.
 
 ### "The file was built specifically for DuckDB version X"
 
-You're using a system-installed DuckDB that doesn't match the extension. Use the DuckDB binary built with the project:
+This project builds against DuckDB's development branch. The built extension only works with the DuckDB binary built alongside it:
 
 ```bash
 ./build/release/duckdb -unsigned
 ```
 
-Not the system `duckdb` command.
+If using a released DuckDB version, install extensions from the repository instead:
+
+```sql
+INSTALL ducklake;
+INSTALL postgres_scanner;
+LOAD ducklake;
+LOAD postgres_scanner;
+```
 
 ### Connection errors
 
