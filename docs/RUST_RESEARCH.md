@@ -10,8 +10,6 @@ This document analyzes whether DuckLake could be built in Rust instead of C++, w
 
 **Recommended approach:** Thin C++ shim (~2000-3000 lines) that subclasses DuckDB interfaces and forwards all calls to Rust via `cxx`. Core logic (~15,000 lines) written in Rust.
 
-**Effort estimate:** 3-6 months for an experienced Rust/C++ developer to port DuckLake.
-
 ---
 
 ## Current State
@@ -437,44 +435,6 @@ mod ffi {
     }
 }
 ```
-
----
-
-## Effort Estimate
-
-### C++ Shim Work
-
-| Component | Classes | Methods | Estimated Lines |
-|-----------|---------|---------|-----------------|
-| Catalog system | 7 | ~50 | 800 |
-| Physical operators | 6 | ~60 | 900 |
-| Table functions | 12 | ~36 | 400 |
-| Infrastructure | 3 | ~10 | 200 |
-| Other | 4 | ~20 | 200 |
-| **Total** | **32** | **~176** | **~2500** |
-
-### Rust Core Work
-
-| Component | Current C++ | Rust Estimate |
-|-----------|-------------|---------------|
-| MetadataManager | 3,711 | 3,000 |
-| Transaction | 2,487 | 2,000 |
-| TableEntry | 1,214 | 1,000 |
-| Insert operator | 824 | 700 |
-| Catalog | 797 | 600 |
-| Other | 9,567 | 8,000 |
-| **Total** | **18,600** | **~15,300** |
-
-### Timeline
-
-| Phase | Duration | Deliverable |
-|-------|----------|-------------|
-| cxx bridge setup | 2 weeks | Build system, basic types |
-| C++ shim | 4 weeks | All 32 class wrappers |
-| Core port | 8 weeks | Business logic in Rust |
-| Testing | 4 weeks | Pass all 243 tests |
-| Polish | 2 weeks | Performance, edge cases |
-| **Total** | **20 weeks** | Production-ready |
 
 ---
 
