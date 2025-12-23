@@ -286,13 +286,48 @@ CREATE TABLE ducklake_files_scheduled_for_deletion(
     PRIMARY KEY (catalog_id, data_file_id)
 );
 
-CREATE INDEX idx_snapshot_id ON ducklake_snapshot(snapshot_id DESC);
+-- ducklake_catalog: PK (catalog_id, begin_snapshot)
+-- Need index for catalog_name lookups
 CREATE INDEX idx_catalog_name ON ducklake_catalog(catalog_name) WHERE end_snapshot IS NULL;
-CREATE INDEX idx_data_file_catalog ON ducklake_data_file(catalog_id);
+
+-- ducklake_table: PK (catalog_id, table_id, begin_snapshot)
+-- Need index for schema_id lookups (not in PK)
+CREATE INDEX idx_table_schema ON ducklake_table(catalog_id, schema_id);
+
+-- ducklake_view: PK (catalog_id, view_id, begin_snapshot)
+-- Need index for schema_id lookups (not in PK)
+CREATE INDEX idx_view_schema ON ducklake_view(catalog_id, schema_id);
+
+-- ducklake_data_file: PK (catalog_id, data_file_id)
+-- Need index for table_id lookups (not in PK)
+-- Need index for data_file_id alone (some queries don't have catalog_id)
 CREATE INDEX idx_data_file_table ON ducklake_data_file(catalog_id, table_id);
-CREATE INDEX idx_data_file_id_global ON ducklake_data_file(data_file_id);
-CREATE INDEX idx_table_catalog ON ducklake_table(catalog_id);
-CREATE INDEX idx_schema_catalog ON ducklake_schema(catalog_id);
+CREATE INDEX idx_data_file_id ON ducklake_data_file(data_file_id);
+
+-- ducklake_delete_file: PK (catalog_id, delete_file_id)
+-- Need index for table_id and data_file_id lookups (not in PK)
+CREATE INDEX idx_delete_file_table ON ducklake_delete_file(catalog_id, table_id);
+CREATE INDEX idx_delete_file_data ON ducklake_delete_file(catalog_id, data_file_id);
+
+-- ducklake_file_column_stats: PK (catalog_id, data_file_id, column_id)
+-- Need index for table_id lookups (not in PK)
+CREATE INDEX idx_file_column_stats_table ON ducklake_file_column_stats(catalog_id, table_id);
+
+-- ducklake_partition_info: PK (catalog_id, partition_id)
+-- Need index for table_id lookups (not in PK)
+CREATE INDEX idx_partition_info_table ON ducklake_partition_info(catalog_id, table_id);
+
+-- ducklake_partition_column: PK (catalog_id, partition_id, partition_key_index)
+-- Need index for table_id lookups (not in PK)
+CREATE INDEX idx_partition_column_table ON ducklake_partition_column(catalog_id, table_id);
+
+-- ducklake_file_partition_value: PK (catalog_id, data_file_id, partition_key_index)
+-- Need index for table_id lookups (not in PK)
+CREATE INDEX idx_file_partition_value_table ON ducklake_file_partition_value(catalog_id, table_id);
+
+-- ducklake_macro: PK (catalog_id, macro_id, begin_snapshot)
+-- Need index for schema_id lookups (not in PK)
+CREATE INDEX idx_macro_schema ON ducklake_macro(catalog_id, schema_id);
 
 INSERT INTO ducklake_metadata (key, value) VALUES ('version', '0.5-dev1');
 
