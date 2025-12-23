@@ -42,6 +42,16 @@ INSERT INTO ducklake_snapshot (snapshot_id, schema_version, next_catalog_id, nex
 
 ## Using DuckLake with PostgreSQL
 
+### Use the Built DuckDB Binary
+
+Extensions are version-locked. Use the DuckDB built with the project, not a system-installed version:
+
+```bash
+./build/release/duckdb -unsigned
+```
+
+The `-unsigned` flag allows loading locally-built extensions.
+
 ### Load Extensions
 
 ```sql
@@ -137,6 +147,16 @@ The schema wasn't initialized. Run the initialization SQL above.
 ### "Extension postgres_scanner not found"
 
 Rebuild with `ENABLE_POSTGRES_SCANNER=1 make release`.
+
+### "The file was built specifically for DuckDB version X"
+
+You're using a system-installed DuckDB that doesn't match the extension. Use the DuckDB binary built with the project:
+
+```bash
+./build/release/duckdb -unsigned
+```
+
+Not the system `duckdb` command.
 
 ### Connection errors
 
