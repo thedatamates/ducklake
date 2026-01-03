@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot(
 );
 CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot_changes(
     snapshot_id BIGINT PRIMARY KEY,
+    catalog_id BIGINT NOT NULL,
     changes_made VARCHAR,
     author VARCHAR,
     commit_message VARCHAR,
@@ -504,9 +505,9 @@ ORDER BY snapshot_id DESC LIMIT 1
 
 	query = StringUtil::Format(
 	    "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_changes "
-	    "(snapshot_id, changes_made, author, commit_message, commit_extra_info) "
-	    "VALUES (%llu, 'created_schema:\"main\"', NULL, NULL, NULL)",
-	    new_snapshot_id);
+	    "(snapshot_id, catalog_id, changes_made, author, commit_message, commit_extra_info) "
+	    "VALUES (%llu, %llu, 'created_schema:\"main\"', NULL, NULL, NULL)",
+	    new_snapshot_id, new_catalog_id);
 	result = transaction.Query(query);
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to record schema creation: ");
@@ -2692,7 +2693,7 @@ static string SQLStringOrNull(const string &str) {
 string DuckLakeMetadataManager::WriteSnapshotChanges(const SnapshotChangeInfo &change_info,
                                                      const DuckLakeSnapshotCommit &commit_info) {
 	return StringUtil::Format(
-	    R"(INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_changes (snapshot_id, changes_made, author, commit_message, commit_extra_info) VALUES ({SNAPSHOT_ID}, %s, %s, %s, %s);)",
+	    R"(INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_changes (snapshot_id, catalog_id, changes_made, author, commit_message, commit_extra_info) VALUES ({SNAPSHOT_ID}, {CATALOG_ID}, %s, %s, %s, %s);)",
 	    SQLStringOrNull(change_info.changes_made), commit_info.author.ToSQLString(),
 	    commit_info.commit_message.ToSQLString(), commit_info.commit_extra_info.ToSQLString());
 }
