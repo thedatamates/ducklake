@@ -35,7 +35,7 @@ correct
 query II
 SELECT path, path_is_relative FROM ducklake_meta.ducklake_schema
 ----
-main/	true
+test/main/	true
 
 query II
 SELECT path, path_is_relative FROM ducklake_meta.ducklake_table

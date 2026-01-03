@@ -54,11 +54,11 @@ EXPLAIN ANALYZE SELECT COUNT(*) FROM partitioned_tbl WHERE part_key=1
 analyzed_plan	<REGEX>:.*Total Files Read: 1.*
 
 # verify partition values are written
-query IIII
+query IIIII
 SELECT * FROM ducklake_metadata.ducklake_file_partition_value
 ----
-0	2	0	0
-1	2	0	1
+0	0	2	0	0
+0	1	2	0	1
 
 # append to partition
 statement ok

@@ -32,7 +32,7 @@ statement ok
 DROP TABLE test
 
 statement ok
-CALL ducklake_expire_snapshots('ducklake', dry_run => false, versions => [2])
+CALL ducklake_expire_snapshots('ducklake', dry_run => false, versions => [3])
 
 # Create table with inlined and merge adjacent possibility
 statement ok

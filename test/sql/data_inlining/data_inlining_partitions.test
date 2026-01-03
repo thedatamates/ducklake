@@ -44,7 +44,7 @@ SELECT year(ts), COUNT(*), MIN(values), MAX(values) FROM partitioned_tbl GROUP B
 2021	1216	thisisastring_8784	thisisastring_9999
 
 query IIII
-SELECT year(ts), COUNT(*), MIN(values), MAX(values) FROM partitioned_tbl AT (version => 4) GROUP BY year(ts)
+SELECT year(ts), COUNT(*), MIN(values), MAX(values) FROM partitioned_tbl AT (version => 5) GROUP BY year(ts)
 ----
 2020	2000	thisisastring_0	thisisastring_999
 
@@ -70,7 +70,7 @@ SELECT year(ts), COUNT(*), MIN(values), MAX(values) FROM partitioned_tbl GROUP B
 2021	1216	thisisastring_8784	thisisastring_9999
 
 query IIII
-SELECT year(ts), COUNT(*), MIN(values), MAX(values) FROM partitioned_tbl AT (version => 4) GROUP BY year(ts)
+SELECT year(ts), COUNT(*), MIN(values), MAX(values) FROM partitioned_tbl AT (version => 5) GROUP BY year(ts)
 ----
 2020	2000	thisisastring_0	thisisastring_999
 
