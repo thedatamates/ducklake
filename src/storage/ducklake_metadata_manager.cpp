@@ -299,7 +299,7 @@ CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_inlined_data_tables(
     table_id BIGINT NOT NULL,
     table_name VARCHAR NOT NULL,
     schema_version BIGINT NOT NULL,
-    PRIMARY KEY (catalog_id, table_id)
+    PRIMARY KEY (catalog_id, table_id, schema_version)
 );
 CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_macro(
     catalog_id BIGINT NOT NULL,
@@ -636,20 +636,20 @@ SELECT schema_id, tbl.table_id, table_uuid::VARCHAR, table_name,
 	(
 		SELECT LIST({'key': key, 'value': value})
 		FROM {METADATA_CATALOG}.ducklake_tag tag
-		WHERE object_id=tbl.table_id AND
+		WHERE tag.catalog_id = tbl.catalog_id AND object_id=tbl.table_id AND
 		      {SNAPSHOT_ID} >= tag.begin_snapshot AND ({SNAPSHOT_ID} < tag.end_snapshot OR tag.end_snapshot IS NULL)
 	) AS tag,
 	(
 		SELECT LIST({'name': table_name, 'schema_version': schema_version})
 		FROM {METADATA_CATALOG}.ducklake_inlined_data_tables inlined_data_tables
-		WHERE inlined_data_tables.table_id = tbl.table_id
+		WHERE inlined_data_tables.catalog_id = tbl.catalog_id AND inlined_data_tables.table_id = tbl.table_id
 	) AS inlined_data_tables,
 	path, path_is_relative,
 	col.column_id, column_name, column_type, initial_default, default_value, nulls_allowed, parent_column,
 	(
 		SELECT LIST({'key': key, 'value': value})
 		FROM {METADATA_CATALOG}.ducklake_column_tag col_tag
-		WHERE col_tag.table_id=tbl.table_id AND col_tag.column_id=col.column_id AND
+		WHERE col_tag.catalog_id = tbl.catalog_id AND col_tag.table_id=tbl.table_id AND col_tag.column_id=col.column_id AND
 		      {SNAPSHOT_ID} >= col_tag.begin_snapshot AND ({SNAPSHOT_ID} < col_tag.end_snapshot OR col_tag.end_snapshot IS NULL)
 	) AS column_tags, default_value_type
 FROM {METADATA_CATALOG}.ducklake_table tbl
@@ -2136,10 +2136,10 @@ string DuckLakeMetadataManager::WriteNewInlinedData(DuckLakeSnapshot &commit_sna
 			auto query = StringUtil::Format(R"(
 SELECT table_name
 FROM {METADATA_CATALOG}.ducklake_inlined_data_tables
-WHERE table_id = %d AND schema_version=(
+WHERE catalog_id = {CATALOG_ID} AND table_id = %d AND schema_version=(
     SELECT MAX(schema_version)
     FROM {METADATA_CATALOG}.ducklake_inlined_data_tables
-    WHERE table_id=%d
+    WHERE catalog_id = {CATALOG_ID} AND table_id=%d
 );)",
 			                                entry.table_id.index, entry.table_id.index);
 			auto result = transaction.Query(commit_snapshot, query);

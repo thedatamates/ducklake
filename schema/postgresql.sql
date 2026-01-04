@@ -242,7 +242,7 @@ CREATE TABLE ducklake_inlined_data_tables(
     table_id BIGINT NOT NULL,
     table_name VARCHAR NOT NULL,
     schema_version BIGINT NOT NULL,
-    PRIMARY KEY (catalog_id, table_id)
+    PRIMARY KEY (catalog_id, table_id, schema_version)
 );
 
 CREATE TABLE ducklake_macro(

@@ -30,8 +30,8 @@ query IIII
 SELECT rowid, snapshot_id, * FROM ducklake.test ORDER BY rowid
 ----
 0	NULL	101	2
-1	1	NULL	3
-2	1	10	20
+1	2	NULL	3
+2	2	10	20
 
 statement ok
 COMMIT
@@ -44,9 +44,9 @@ SELECT stats(i) FROM ducklake.test LIMIT 1
 query IIII
 SELECT rowid, snapshot_id, * FROM ducklake.test ORDER BY rowid
 ----
-0	2	101	2
-1	1	NULL	3
-2	1	10	20
+0	3	101	2
+1	2	NULL	3
+2	2	10	20
 
 # update the other row
 statement ok
@@ -60,8 +60,8 @@ UPDATE ducklake.test SET i=i+1000 WHERE i=10
 query IIII
 SELECT rowid, snapshot_id, * FROM ducklake.test ORDER BY rowid
 ----
-0	2	101	2
-1	1	NULL	3
+0	3	101	2
+1	2	NULL	3
 2	NULL	1010	20
 
 statement ok
@@ -70,6 +70,6 @@ COMMIT
 query IIII
 SELECT rowid, snapshot_id, * FROM ducklake.test ORDER BY rowid
 ----
-0	2	101	2
-1	1	NULL	3
-2	3	1010	20
+0	3	101	2
+1	2	NULL	3
+2	4	1010	20
