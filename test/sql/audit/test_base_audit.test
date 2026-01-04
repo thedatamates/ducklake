@@ -22,11 +22,13 @@ SELECT * FROM ducklake.test
 ----
 
 # At this point all our author and messages are NULL
+# Snapshots: 0 (initial), 1 (catalog creation), 2 (CREATE TABLE)
 query III
 SELECT snapshot_id, author, commit_message FROM ducklake.snapshots()
 ----
 0	NULL	NULL
 1	NULL	NULL
+2	NULL	NULL
 
 # If we insert information here, it gets commited without commit information as well
 statement ok
@@ -34,9 +36,9 @@ INSERT INTO ducklake.test VALUES (0, 'oogie');
 
 # At this point all our author and messages are NULL
 query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 2
+SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 3
 ----
-2	NULL	NULL
+3	NULL	NULL
 
 
 # Now we get a nice message and author
@@ -53,9 +55,9 @@ statement ok
 COMMIT;
 
 query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 3
+SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 4
 ----
-3	Pedro	Inserting myself
+4	Pedro	Inserting myself
 
 # We can also have only an author
 statement ok
@@ -71,9 +73,9 @@ statement ok
 COMMIT;
 
 query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 4
+SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 5
 ----
-4	Pedro	(empty)
+5	Pedro	(empty)
 
 # Only the message
 statement ok
@@ -89,9 +91,9 @@ statement ok
 COMMIT;
 
 query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 5
+SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 6
 ----
-5	NULL	Adding Mark
+6	NULL	Adding Mark
 
 # NULLS
 statement ok
@@ -121,10 +123,10 @@ COMMIT;
 
 # Both NULL and (empty) are accepted and treated as NULL
 query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id > 5
+SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id > 6
 ----
-6	NULL	NULL
-7	(empty)	(empty)
+7	NULL	NULL
+8	(empty)	(empty)
 
 # Test that ROLLBACK doesn't mess things up
 # Empty
@@ -144,9 +146,9 @@ statement ok
 INSERT INTO ducklake.test VALUES (6, 'Hannes');
 
 query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 8
+SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 9
 ----
-8	NULL	NULL
+9	NULL	NULL
 
 statement ok
 CALL ducklake.set_option('require_commit_message', True)
@@ -169,9 +171,9 @@ statement ok
 Commit;
 
 query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 9
+SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 10
 ----
-9	Pedro	Adding Morgana
+10	Pedro	Adding Morgana
 
 
 statement error
@@ -188,9 +190,9 @@ statement ok
 INSERT INTO ducklake.test VALUES (8, 'Odara');
 
 query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 10
+SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 11
 ----
-10	NULL	NULL
+11	NULL	NULL
 
 # Changing commit message afterwards
 statement ok
@@ -210,15 +212,15 @@ COMMIT;
 
 # Last set should survive
 query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 11
+SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 12
 ----
-11	Mark	Inserting Teddy
+12	Mark	Inserting Teddy
 
 # Lets check that our previous insertion has a null value for extra info
 query IIII
-SELECT snapshot_id, author, commit_message, commit_extra_info FROM ducklake.snapshots() where snapshot_id = 11
+SELECT snapshot_id, author, commit_message, commit_extra_info FROM ducklake.snapshots() where snapshot_id = 12
 ----
-11	Mark	Inserting Teddy	NULL
+12	Mark	Inserting Teddy	NULL
 
 # Let's add some extra info to the next commit
 
@@ -236,9 +238,9 @@ COMMIT;
 
 # Lets check ollie is inserted with the correct extra_info
 query IIII
-SELECT snapshot_id, author, commit_message, commit_extra_info FROM ducklake.snapshots() where snapshot_id = 12
+SELECT snapshot_id, author, commit_message, commit_extra_info FROM ducklake.snapshots() where snapshot_id = 13
 ----
-12	Pedro	Inserting Ollie	{'barks':7, 'cuteness':10}
+13	Pedro	Inserting Ollie	{'barks':7, 'cuteness':10}
 
 # Empty is also valid
 statement ok
@@ -253,11 +255,11 @@ CALL ducklake.set_commit_message('Pedro', 'Inserting the greatest musician of th
 statement ok
 COMMIT;
 
-# Lets check ollie is inserted with the correct extra_info
+# Lets check Jack Black is inserted with the correct extra_info
 query IIII
-SELECT snapshot_id, author, commit_message, commit_extra_info FROM ducklake.snapshots() where snapshot_id = 13
+SELECT snapshot_id, author, commit_message, commit_extra_info FROM ducklake.snapshots() where snapshot_id = 14
 ----
-13	Pedro	Inserting the greatest musician of the world.	(empty)
+14	Pedro	Inserting the greatest musician of the world.	(empty)
 
 # Check all data was inserted correctly at the end
 query II

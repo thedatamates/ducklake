@@ -64,5 +64,5 @@ FROM test
 query III
 SELECT data_file_id, begin_snapshot, end_snapshot FROM ducklake_metadata.ducklake_data_file
 ----
-0	2	5
-4	5	NULL
+0	3	6
+4	6	NULL

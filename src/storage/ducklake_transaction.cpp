@@ -1777,7 +1777,7 @@ unique_ptr<QueryResult> DuckLakeTransaction::Query(string query) {
 	auto schema_identifier_escaped = StringUtil::Replace(schema_identifier, "'", "''");
 	auto schema_literal = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.MetadataSchemaName());
 	auto metadata_path = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.MetadataPath());
-	auto data_path = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.DataPath());
+	auto base_data_path = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.BaseDataPath());
 
 	query = StringUtil::Replace(query, "{METADATA_CATALOG_NAME_LITERAL}", catalog_literal);
 	query = StringUtil::Replace(query, "{METADATA_CATALOG_NAME_IDENTIFIER}", catalog_identifier);
@@ -1786,7 +1786,7 @@ unique_ptr<QueryResult> DuckLakeTransaction::Query(string query) {
 	query = StringUtil::Replace(query, "{METADATA_CATALOG}", catalog_identifier + "." + schema_identifier);
 	query = StringUtil::Replace(query, "{METADATA_SCHEMA_ESCAPED}", schema_identifier_escaped);
 	query = StringUtil::Replace(query, "{METADATA_PATH}", metadata_path);
-	query = StringUtil::Replace(query, "{DATA_PATH}", data_path);
+	query = StringUtil::Replace(query, "{BASE_DATA_PATH}", base_data_path);
 	auto catalog_id = to_string(ducklake_catalog.CatalogId());
 	query = StringUtil::Replace(query, "{CATALOG_ID}", catalog_id);
 	auto catalog_name = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.CatalogName());

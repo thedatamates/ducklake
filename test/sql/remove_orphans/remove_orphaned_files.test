@@ -35,7 +35,7 @@ CALL ducklake_merge_adjacent_files('ducklake');
 statement ok
 COPY test to '${DATA_PATH}/remove_orphaned_files/test/main/test/bla.parquet';
 
-# We should have 3 files
+# We should have 4 files (2 original + 1 merged + 1 orphan)
 query I
 SELECT COUNT(*) FROM GLOB('${DATA_PATH}/remove_orphaned_files/test/main/test/*')
 ----
@@ -44,7 +44,8 @@ SELECT COUNT(*) FROM GLOB('${DATA_PATH}/remove_orphaned_files/test/main/test/*')
 statement ok
 CALL ducklake.set_option('delete_older_than', '1 week')
 
-# Check preference of manually set option
+# Check preference of manually set option - finds only 1 orphan (the manual bla.parquet)
+# Merged files are tracked in scheduled_for_deletion and are NOT orphans
 query I
 SELECT count(*) FROM ducklake_delete_orphaned_files('ducklake', cleanup_all => true, dry_run => true);
 ----

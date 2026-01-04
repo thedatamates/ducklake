@@ -3161,7 +3161,7 @@ WHERE catalog_id = {CATALOG_ID}
 vector<DuckLakeFileForCleanup> DuckLakeMetadataManager::GetOrphanFilesForCleanup(const string &filter,
                                                                                  const string &separator) {
 	auto query = R"(SELECT filename
-FROM read_blob({DATA_PATH} || '**')
+FROM read_blob({BASE_DATA_PATH} || '**')
 WHERE filename NOT IN (
 SELECT REPLACE(
            CASE
@@ -3170,7 +3170,7 @@ SELECT REPLACE(
                         WHEN NOT table_relative THEN table_path || file_path
                         ELSE CASE
                                  WHEN NOT schema_relative THEN schema_path || table_path || file_path
-                                 ELSE {DATA_PATH} || schema_path || table_path || file_path
+                                 ELSE {BASE_DATA_PATH} || schema_path || table_path || file_path
                              END
                    END
            END,
@@ -3191,7 +3191,7 @@ UNION ALL
 SELECT REPLACE(
     CASE
         WHEN NOT f.path_is_relative THEN f.path
-        ELSE {DATA_PATH} || f.path
+        ELSE {BASE_DATA_PATH} || f.path
     END ,
            '/',
            '{SEPARATOR}'

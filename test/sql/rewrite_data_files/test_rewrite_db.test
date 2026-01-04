@@ -50,24 +50,25 @@ WHERE key  = 120;
 endloop
 
 # Check ze files before rewrite
+# Snapshot IDs are +1 due to catalog creation snapshot
 query IIII
 SELECT data_file_id, delete_file_id, begin_snapshot, end_snapshot FROM ducklake_metadata.ducklake_delete_file
 ----
-0	1	3	5
-0	3	5	NULL
-2	4	6	NULL
-5	6	9	11
-5	8	11	NULL
-7	9	12	NULL
+0	1	4	6
+0	3	6	NULL
+2	4	7	NULL
+5	6	10	12
+5	8	12	NULL
+7	9	13	NULL
 
 
 query III
 SELECT data_file_id, begin_snapshot, end_snapshot FROM ducklake_metadata.ducklake_data_file
 ----
-0	2	NULL
-2	4	NULL
-5	8	NULL
-7	10	NULL
+0	3	NULL
+2	5	NULL
+5	9	NULL
+7	11	NULL
 
 # Now lets call the rewrite function in the whole DB
 statement ok
@@ -77,20 +78,20 @@ CALL ducklake_rewrite_data_files('ducklake', delete_threshold => 0);
 query IIII
 SELECT data_file_id, delete_file_id, begin_snapshot, end_snapshot FROM ducklake_metadata.ducklake_delete_file ORDER BY ALL
 ----
-0	1	3	5
-0	3	5	6
-5	6	9	11
-5	8	11	12
+0	1	4	6
+0	3	6	7
+5	6	10	12
+5	8	12	13
 
 query III
 SELECT data_file_id, begin_snapshot, end_snapshot FROM ducklake_metadata.ducklake_data_file  ORDER BY ALL
 ----
-0	2	6
-2	4	6
-5	8	12
-7	10	12
-10	6	NULL
-11	12	NULL
+0	3	7
+2	5	7
+5	9	13
+7	11	13
+10	7	NULL
+11	13	NULL
 
 # Validate some results
 query I
