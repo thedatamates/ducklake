@@ -287,3 +287,7 @@ CREATE TABLE ducklake_files_scheduled_for_deletion(
 );
 
 INSERT INTO ducklake_metadata (key, value) VALUES ('version', '0.5-dev1');
+
+-- Bootstrap snapshot required for DuckLake to create catalogs
+INSERT INTO ducklake_snapshot (snapshot_id, schema_version, next_catalog_id, next_file_id)
+VALUES (0, 0, 0, 0);

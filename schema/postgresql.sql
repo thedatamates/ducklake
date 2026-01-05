@@ -295,3 +295,7 @@ CREATE INDEX idx_table_catalog ON ducklake_table(catalog_id);
 CREATE INDEX idx_schema_catalog ON ducklake_schema(catalog_id);
 
 INSERT INTO ducklake_metadata (key, value) VALUES ('version', '0.5-dev1');
+
+-- Bootstrap snapshot required for DuckLake to create catalogs
+INSERT INTO ducklake_snapshot (snapshot_id, schema_version, next_catalog_id, next_file_id)
+VALUES (0, 0, 0, 0);
