@@ -287,8 +287,8 @@ CREATE TABLE ducklake_files_scheduled_for_deletion(
 );
 
 -- ducklake_catalog: PK (catalog_id, begin_snapshot)
--- Need index for catalog_name lookups
-CREATE INDEX idx_catalog_name ON ducklake_catalog(catalog_name) WHERE end_snapshot IS NULL;
+-- Unique catalog names among active catalogs
+CREATE UNIQUE INDEX idx_catalog_name_unique ON ducklake_catalog(catalog_name) WHERE end_snapshot IS NULL;
 
 -- ducklake_table: PK (catalog_id, table_id, begin_snapshot)
 -- Need index for schema_id lookups (not in PK)
@@ -328,6 +328,14 @@ CREATE INDEX idx_file_partition_value_table ON ducklake_file_partition_value(cat
 -- ducklake_macro: PK (catalog_id, macro_id, begin_snapshot)
 -- Need index for schema_id lookups (not in PK)
 CREATE INDEX idx_macro_schema ON ducklake_macro(catalog_id, schema_id);
+
+-- Name uniqueness constraints (partial indexes on active entries only)
+-- Prevents duplicate names within their parent scope
+CREATE UNIQUE INDEX idx_schema_name_unique ON ducklake_schema(catalog_id, schema_name) WHERE end_snapshot IS NULL;
+CREATE UNIQUE INDEX idx_table_name_unique ON ducklake_table(catalog_id, schema_id, table_name) WHERE end_snapshot IS NULL;
+CREATE UNIQUE INDEX idx_column_name_unique ON ducklake_column(catalog_id, table_id, column_name) WHERE end_snapshot IS NULL;
+CREATE UNIQUE INDEX idx_view_name_unique ON ducklake_view(catalog_id, schema_id, view_name) WHERE end_snapshot IS NULL;
+CREATE UNIQUE INDEX idx_macro_name_unique ON ducklake_macro(catalog_id, schema_id, macro_name) WHERE end_snapshot IS NULL;
 
 INSERT INTO ducklake_metadata (key, value) VALUES ('version', '0.5-dev1');
 
