@@ -124,4 +124,9 @@ public:
 	DuckLakeForkCatalogFunction();
 };
 
+class DuckLakeCatalogsFunction : public BaseMetadataFunction {
+public:
+	DuckLakeCatalogsFunction();
+};
+
 } // namespace duckdb

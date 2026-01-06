@@ -119,11 +119,17 @@ CREATE TABLE ducklake_catalog(
     catalog_id BIGINT,
     catalog_uuid UUID NOT NULL,
     catalog_name VARCHAR NOT NULL,
+    parent_catalog_id BIGINT,  -- NULL for root catalogs, set for forks
     begin_snapshot BIGINT,
     end_snapshot BIGINT,
     PRIMARY KEY (catalog_id, begin_snapshot)
 );
 ```
+
+The `parent_catalog_id` column enables:
+- Lineage tracking: identify which catalog a fork came from
+- Idempotent fork operations: `if_not_exists` can verify parent relationship
+- Recursive CTE queries for full ancestry
 
 ### Entity Tables (With catalog_id + Composite Keys)
 
@@ -383,9 +389,9 @@ SELECT MAX(snapshot_id) + 1, NOW(), schema_version, next_catalog_id + 1, next_fi
 FROM ducklake_snapshot ORDER BY snapshot_id DESC LIMIT 1;
 -- Creates: snapshot 54 with next_catalog_id=6
 
--- 3. Create catalog entry
-INSERT INTO ducklake_catalog (catalog_id, catalog_uuid, catalog_name, begin_snapshot, end_snapshot)
-VALUES (5, UUID(), 'fork_name', 54, NULL);
+-- 3. Create catalog entry (with parent_catalog_id for lineage)
+INSERT INTO ducklake_catalog (catalog_id, catalog_uuid, catalog_name, parent_catalog_id, begin_snapshot, end_snapshot)
+VALUES (5, UUID(), 'fork_name', parent_catalog_id, 54, NULL);
 
 -- 4. Copy all metadata (same IDs, new catalog_id, new begin_snapshot)
 INSERT INTO ducklake_schema (catalog_id, schema_id, ..., begin_snapshot, end_snapshot)
@@ -553,10 +559,25 @@ For PostgreSQL, the schema must be pre-created via the SQL file.
 With `catalog_id` column-based isolation, webapps can query metadata directly:
 
 ```sql
--- List catalogs
-SELECT catalog_id, catalog_uuid, catalog_name, begin_snapshot
+-- List catalogs (including parent for lineage)
+SELECT catalog_id, catalog_uuid, catalog_name, parent_catalog_id, begin_snapshot
 FROM ducklake.ducklake_catalog
 WHERE end_snapshot IS NULL;
+
+-- Get full lineage for a catalog using recursive CTE
+WITH RECURSIVE lineage AS (
+    SELECT catalog_id, catalog_name, parent_catalog_id, 0 as depth
+    FROM ducklake.ducklake_catalog
+    WHERE catalog_name = 'my_fork' AND end_snapshot IS NULL
+
+    UNION ALL
+
+    SELECT c.catalog_id, c.catalog_name, c.parent_catalog_id, l.depth + 1
+    FROM ducklake.ducklake_catalog c
+    JOIN lineage l ON c.catalog_id = l.parent_catalog_id
+    WHERE c.end_snapshot IS NULL
+)
+SELECT * FROM lineage ORDER BY depth;
 
 -- List tables for a catalog
 SELECT t.table_name, t.table_uuid, s.schema_name
@@ -709,6 +730,7 @@ struct DuckLakeSnapshot {
 
 | Version | Changes |
 |---------|---------|
+| 0.5-dev2 | Added `parent_catalog_id` column, `ducklake_catalogs()` function, `if_not_exists` for forks |
 | 0.5-dev1 | Global snapshots, composite keys, catalog forking |
 | 0.4-dev1 | Added catalog-based multi-tenant isolation |
 | 0.3 | Upstream DuckLake version |

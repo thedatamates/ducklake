@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_catalog(
     catalog_id BIGINT NOT NULL,
     catalog_uuid UUID NOT NULL DEFAULT UUID(),
     catalog_name VARCHAR NOT NULL,
+    parent_catalog_id BIGINT,
     begin_snapshot BIGINT NOT NULL,
     end_snapshot BIGINT,
     PRIMARY KEY (catalog_id, begin_snapshot)
@@ -475,8 +476,8 @@ ORDER BY snapshot_id DESC LIMIT 1
 	}
 
 	query = StringUtil::Format(
-	    "INSERT INTO {METADATA_CATALOG}.ducklake_catalog (catalog_id, catalog_uuid, catalog_name, begin_snapshot, end_snapshot) "
-	    "VALUES (%llu, UUID(), %s, %llu, NULL)",
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_catalog (catalog_id, catalog_uuid, catalog_name, parent_catalog_id, begin_snapshot, end_snapshot) "
+	    "VALUES (%llu, UUID(), %s, NULL, %llu, NULL)",
 	    new_catalog_id, catalog_name_literal, new_snapshot_id);
 	result = transaction.Query(query);
 	if (result->HasError()) {

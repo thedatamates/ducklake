@@ -79,6 +79,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 	DuckLakeForkCatalogFunction fork_catalog;
 	loader.RegisterFunction(fork_catalog);
 
+	DuckLakeCatalogsFunction catalogs;
+	loader.RegisterFunction(catalogs);
+
 	// secrets
 	auto secret_type = DuckLakeSecret::GetSecretType();
 	loader.RegisterSecretType(secret_type);

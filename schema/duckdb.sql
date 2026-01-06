@@ -26,6 +26,7 @@ CREATE TABLE ducklake_catalog(
     catalog_id BIGINT NOT NULL,
     catalog_uuid UUID NOT NULL DEFAULT UUID(),
     catalog_name VARCHAR NOT NULL,
+    parent_catalog_id BIGINT,  -- NULL for root catalogs, set for forks
     begin_snapshot BIGINT NOT NULL,
     end_snapshot BIGINT,
     PRIMARY KEY (catalog_id, begin_snapshot)

@@ -12,6 +12,7 @@ struct ForkCatalogBindData : public TableFunctionData {
 
 	Catalog &catalog;
 	string new_catalog_name;
+	bool if_not_exists = false;
 };
 
 static unique_ptr<FunctionData> DuckLakeForkCatalogBind(ClientContext &context, TableFunctionBindInput &input,
@@ -21,11 +22,18 @@ static unique_ptr<FunctionData> DuckLakeForkCatalogBind(ClientContext &context, 
 
 	result->new_catalog_name = input.inputs[1].GetValue<string>();
 
+	// Handle if_not_exists named parameter
+	for (auto &entry : input.named_parameters) {
+		if (StringUtil::CIEquals(entry.first, "if_not_exists")) {
+			result->if_not_exists = BooleanValue::Get(entry.second);
+		}
+	}
+
 	names.emplace_back("catalog_id");
 	return_types.emplace_back(LogicalType::BIGINT);
 	names.emplace_back("catalog_name");
 	return_types.emplace_back(LogicalType::VARCHAR);
-	names.emplace_back("success");
+	names.emplace_back("created");
 	return_types.emplace_back(LogicalType::BOOLEAN);
 
 	return std::move(result);
@@ -58,6 +66,69 @@ static void DuckLakeForkCatalogExecute(ClientContext &context, TableFunctionInpu
 
 	auto new_catalog_name_literal = DuckLakeUtil::SQLLiteralToString(data.new_catalog_name);
 
+	// Check if catalog with this name already exists (include parent_catalog_id for lineage check)
+	string check_query = StringUtil::Format(
+	    "SELECT catalog_id, parent_catalog_id FROM {METADATA_CATALOG}.ducklake_catalog "
+	    "WHERE catalog_name = %s AND end_snapshot IS NULL",
+	    new_catalog_name_literal);
+	auto check_result = transaction.Query(check_query);
+	if (check_result->HasError()) {
+		check_result->GetErrorObject().Throw("Failed to check for existing catalog: ");
+	}
+
+	// Collect all matching rows to detect duplicates
+	vector<pair<idx_t, Value>> existing_catalogs;
+	while (true) {
+		auto check_chunk = check_result->Fetch();
+		if (!check_chunk || check_chunk->size() == 0) {
+			break;
+		}
+		for (idx_t i = 0; i < check_chunk->size(); i++) {
+			idx_t cat_id = check_chunk->GetValue(0, i).GetValue<idx_t>();
+			Value parent_val = check_chunk->GetValue(1, i);
+			existing_catalogs.emplace_back(cat_id, parent_val);
+		}
+	}
+
+	if (!existing_catalogs.empty()) {
+		// Check for duplicates - this indicates data integrity issues
+		if (existing_catalogs.size() > 1) {
+			throw InvalidInputException(
+			    "Multiple active catalogs named '%s' exist (catalog_ids: %llu, %llu, ...). "
+			    "This indicates a data integrity issue. Please clean up duplicate catalogs before proceeding.",
+			    data.new_catalog_name, existing_catalogs[0].first, existing_catalogs[1].first);
+		}
+
+		idx_t existing_catalog_id = existing_catalogs[0].first;
+		Value existing_parent_val = existing_catalogs[0].second;
+
+		if (!data.if_not_exists) {
+			throw InvalidInputException("Catalog '%s' already exists. Use if_not_exists := true to return existing catalog.",
+			                            data.new_catalog_name);
+		}
+
+		// if_not_exists is true - verify parent relationship using parent_catalog_id column
+		bool is_fork = !existing_parent_val.IsNull();
+
+		if (!is_fork) {
+			throw InvalidInputException("Catalog '%s' exists but is not a fork (it's a root catalog).",
+			                            data.new_catalog_name);
+		}
+
+		idx_t existing_parent_id = existing_parent_val.GetValue<idx_t>();
+		if (existing_parent_id != parent_catalog_id) {
+			throw InvalidInputException("Catalog '%s' exists but was forked from a different parent (catalog_id %llu, not %llu).",
+			                            data.new_catalog_name, existing_parent_id, parent_catalog_id);
+		}
+
+		// Parent matches - return existing catalog with created=false
+		output.SetValue(0, 0, Value::BIGINT(NumericCast<int64_t>(existing_catalog_id)));
+		output.SetValue(1, 0, Value(data.new_catalog_name));
+		output.SetValue(2, 0, Value::BOOLEAN(false));  // created = false
+		output.SetCardinality(1);
+		return;
+	}
+
 	string query = R"(
 SELECT snapshot_id, next_catalog_id, next_file_id, schema_version
 FROM {METADATA_CATALOG}.ducklake_snapshot
@@ -79,9 +150,9 @@ ORDER BY snapshot_id DESC LIMIT 1
 	idx_t schema_version = chunk->GetValue(3, 0).GetValue<idx_t>();
 
 	query = StringUtil::Format(
-	    "INSERT INTO {METADATA_CATALOG}.ducklake_catalog (catalog_id, catalog_uuid, catalog_name, begin_snapshot, end_snapshot) "
-	    "VALUES (%llu, UUID(), %s, %llu, NULL)",
-	    new_catalog_id, new_catalog_name_literal, new_snapshot_id);
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_catalog (catalog_id, catalog_uuid, catalog_name, parent_catalog_id, begin_snapshot, end_snapshot) "
+	    "VALUES (%llu, UUID(), %s, %llu, %llu, NULL)",
+	    new_catalog_id, new_catalog_name_literal, parent_catalog_id, new_snapshot_id);
 	result = transaction.Query(query);
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to create catalog entry for fork: ");
@@ -318,13 +389,14 @@ ORDER BY snapshot_id DESC LIMIT 1
 
 	output.SetValue(0, 0, Value::BIGINT(NumericCast<int64_t>(new_catalog_id)));
 	output.SetValue(1, 0, Value(data.new_catalog_name));
-	output.SetValue(2, 0, Value::BOOLEAN(true));
+	output.SetValue(2, 0, Value::BOOLEAN(true));  // created = true
 	output.SetCardinality(1);
 }
 
 DuckLakeForkCatalogFunction::DuckLakeForkCatalogFunction()
     : TableFunction("ducklake_fork_catalog", {LogicalType::VARCHAR, LogicalType::VARCHAR},
                     DuckLakeForkCatalogExecute, DuckLakeForkCatalogBind, DuckLakeForkCatalogInit) {
+	named_parameters["if_not_exists"] = LogicalType::BOOLEAN;
 }
 
 } // namespace duckdb
