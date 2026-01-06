@@ -15,6 +15,7 @@ CREATE TABLE ducklake_snapshot(
 
 CREATE TABLE ducklake_snapshot_changes(
     snapshot_id BIGINT PRIMARY KEY,
+    catalog_id BIGINT NOT NULL,
     changes_made VARCHAR,
     author VARCHAR,
     commit_message VARCHAR,
