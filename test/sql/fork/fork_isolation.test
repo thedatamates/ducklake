@@ -7,7 +7,7 @@ require ducklake
 require parquet
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/isolation_meta.db' AS parent (DATA_PATH '__TEST_DIR__/isolation_data', CATALOG 'parent');
+ATTACH 'ducklake:__TEST_DIR__/isolation_meta.db' AS parent (DATA_PATH '__TEST_DIR__/isolation_data', CATALOG 'parent', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE parent;
@@ -34,7 +34,7 @@ statement ok
 DETACH parent;
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/isolation_meta.db' AS child (DATA_PATH '__TEST_DIR__/isolation_data', CATALOG 'child');
+ATTACH 'ducklake:__TEST_DIR__/isolation_meta.db' AS child (DATA_PATH '__TEST_DIR__/isolation_data', CATALOG 'child', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE child;
@@ -75,7 +75,7 @@ statement ok
 DETACH child;
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/isolation_meta.db' AS parent (DATA_PATH '__TEST_DIR__/isolation_data', CATALOG 'parent');
+ATTACH 'ducklake:__TEST_DIR__/isolation_meta.db' AS parent (DATA_PATH '__TEST_DIR__/isolation_data', CATALOG 'parent', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE parent;
@@ -103,7 +103,7 @@ statement ok
 DETACH parent;
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/isolation_meta.db' AS child (DATA_PATH '__TEST_DIR__/isolation_data', CATALOG 'child');
+ATTACH 'ducklake:__TEST_DIR__/isolation_meta.db' AS child (DATA_PATH '__TEST_DIR__/isolation_data', CATALOG 'child', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE child;

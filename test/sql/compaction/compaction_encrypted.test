@@ -14,7 +14,7 @@ test-env DATA_PATH __TEST_DIR__
 
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_compaction_encrypted_files', ENCRYPTED, CATALOG 'test')
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_compaction_encrypted_files', ENCRYPTED, CATALOG 'test', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 CREATE TABLE ducklake.test(i INTEGER);

@@ -11,7 +11,7 @@ test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
 test-env DATA_PATH __TEST_DIR__
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/transaction_insert_update_delete/', METADATA_CATALOG 'metadata', CATALOG 'test');
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/transaction_insert_update_delete/', METADATA_CATALOG 'metadata', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE ducklake;

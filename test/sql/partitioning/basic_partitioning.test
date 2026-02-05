@@ -8,7 +8,7 @@ require parquet
 
 # partitioning based on a column
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/ducklake_partitioning.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_partitioning', METADATA_CATALOG 'ducklake_metadata', CATALOG 'test')
+ATTACH 'ducklake:__TEST_DIR__/ducklake_partitioning.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_partitioning', METADATA_CATALOG 'ducklake_metadata', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE ducklake
@@ -156,7 +156,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/ducklake_partitioning.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_partitioning', METADATA_CATALOG 'ducklake_metadata2', CATALOG 'test')
+ATTACH 'ducklake:__TEST_DIR__/ducklake_partitioning.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_partitioning', METADATA_CATALOG 'ducklake_metadata2', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE ducklake

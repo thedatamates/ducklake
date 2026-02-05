@@ -16,7 +16,8 @@ ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (
 	DATA_PATH '${DATA_PATH}/ducklake_files',
 	METADATA_CATALOG 'ducklake_meta',
 	DATA_INLINING_ROW_LIMIT 5,
-	CATALOG 'test'
+	CATALOG 'test',
+	CREATE_IF_NOT_EXISTS true
 )
 
 statement ok

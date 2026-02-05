@@ -7,7 +7,7 @@ require ducklake
 require parquet
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/ducklake_parquet_compression.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_parquet_compression', CATALOG 'test')
+ATTACH 'ducklake:__TEST_DIR__/ducklake_parquet_compression.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_parquet_compression', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 CALL ducklake.set_option('parquet_compression', 'zstd')
@@ -42,7 +42,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/ducklake_parquet_compression.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_parquet_compression', CATALOG 'test')
+ATTACH 'ducklake:__TEST_DIR__/ducklake_parquet_compression.db' AS ducklake (DATA_PATH '__TEST_DIR__/ducklake_parquet_compression', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 INSERT INTO ducklake.tbl VALUES (42, 'hello world');

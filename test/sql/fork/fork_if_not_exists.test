@@ -7,7 +7,7 @@ require ducklake
 require parquet
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/fork_ine_meta.db' AS parent_catalog (DATA_PATH '__TEST_DIR__/fork_ine_data', CATALOG 'parent');
+ATTACH 'ducklake:__TEST_DIR__/fork_ine_meta.db' AS parent_catalog (DATA_PATH '__TEST_DIR__/fork_ine_data', CATALOG 'parent', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE parent_catalog;
@@ -66,7 +66,7 @@ DETACH parent_catalog;
 
 # Re-attach to access forked catalog
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/fork_ine_meta.db' AS forked_catalog (DATA_PATH '__TEST_DIR__/fork_ine_data', CATALOG 'forked');
+ATTACH 'ducklake:__TEST_DIR__/fork_ine_meta.db' AS forked_catalog (DATA_PATH '__TEST_DIR__/fork_ine_data', CATALOG 'forked', CREATE_IF_NOT_EXISTS true);
 
 # Create a fork from forked_catalog
 query TI
@@ -79,7 +79,7 @@ statement ok
 DETACH forked_catalog;
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/fork_ine_meta.db' AS parent_catalog (DATA_PATH '__TEST_DIR__/fork_ine_data', CATALOG 'parent');
+ATTACH 'ducklake:__TEST_DIR__/fork_ine_meta.db' AS parent_catalog (DATA_PATH '__TEST_DIR__/fork_ine_data', CATALOG 'parent', CREATE_IF_NOT_EXISTS true);
 
 statement error
 SELECT * FROM ducklake_fork_catalog('parent_catalog', 'child_of_forked', if_not_exists := true);

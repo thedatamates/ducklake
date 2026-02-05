@@ -12,6 +12,6 @@ test-env DATA_PATH __TEST_DIR__
 
 
 statement error
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_recursive_files', METADATA_CATALOG 'ducklake', CATALOG 'test')
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_recursive_files', METADATA_CATALOG 'ducklake', CATALOG 'test', CREATE_IF_NOT_EXISTS true)
 ----
 

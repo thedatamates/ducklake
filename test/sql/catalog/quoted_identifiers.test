@@ -15,7 +15,7 @@ test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
 test-env DATA_PATH __TEST_DIR__
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}''quoted'' "db".db' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake ''quoted'' "path"', METADATA_CATALOG '''quoted'' catalog "name"', METADATA_SCHEMA '''quoted'' catalog "schema"', CATALOG 'test')
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}''quoted'' "db".db' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake ''quoted'' "path"', METADATA_CATALOG '''quoted'' catalog "name"', METADATA_SCHEMA '''quoted'' catalog "schema"', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 CREATE TABLE ducklake."quoted 'table' ""name"""("quoted 'column' ""name""" INTEGER);

@@ -31,7 +31,7 @@ struct DuckLakeOptions {
 	bool override_data_path = false;
 	AccessMode access_mode = AccessMode::AUTOMATIC;
 	DuckLakeEncryption encryption = DuckLakeEncryption::AUTOMATIC;
-	bool create_if_not_exists = true;
+	bool create_if_not_exists = false;
 	bool migrate_if_required = true;
 	unique_ptr<BoundAtClause> at_clause;
 	case_insensitive_map_t<Value> metadata_parameters;

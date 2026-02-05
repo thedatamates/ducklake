@@ -13,7 +13,7 @@ test-env DATA_PATH __TEST_DIR__
 
 # First catalog with catalog name 'tenant_a'
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/tenant_a_meta.db' AS tenant_a (DATA_PATH '${DATA_PATH}/tenant_a', CATALOG 'tenant_a');
+ATTACH 'ducklake:__TEST_DIR__/tenant_a_meta.db' AS tenant_a (DATA_PATH '${DATA_PATH}/tenant_a', CATALOG 'tenant_a', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE tenant_a;
@@ -33,7 +33,7 @@ SELECT * FROM users ORDER BY id;
 
 # Second catalog with catalog name 'tenant_b' (separate metadata database)
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/tenant_b_meta.db' AS tenant_b (DATA_PATH '${DATA_PATH}/tenant_b', CATALOG 'tenant_b');
+ATTACH 'ducklake:__TEST_DIR__/tenant_b_meta.db' AS tenant_b (DATA_PATH '${DATA_PATH}/tenant_b', CATALOG 'tenant_b', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE tenant_b;

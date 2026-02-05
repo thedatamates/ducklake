@@ -15,7 +15,8 @@ statement ok
 ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (
 	DATA_PATH '${DATA_PATH}/ducklake_files',
 	METADATA_CATALOG 'ducklake_meta',
-	CATALOG 'test'
+	CATALOG 'test',
+	CREATE_IF_NOT_EXISTS true
 )
 
 # Copy over a test parquet file with geometry column

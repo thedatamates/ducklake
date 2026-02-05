@@ -21,7 +21,7 @@ statement ok
 set autoinstall_known_extensions=false
 
 statement error
-ATTACH 'ducklake:autoload_problem.ducklake' (DATA_PATH 's3://some-bucket/', CATALOG 'test')
+ATTACH 'ducklake:autoload_problem.ducklake' (DATA_PATH 's3://some-bucket/', CATALOG 'test', CREATE_IF_NOT_EXISTS true)
 ----
 Missing Extension Error: Data path s3://some-bucket/ requires the extension httpfs to be loaded
 
@@ -37,13 +37,13 @@ set autoinstall_extension_repository='${LOCAL_EXTENSION_REPO}';
 
 ## Note that attaching Ducklake will NOT actually validate the data path
 statement ok
-ATTACH 'ducklake:autoload_problem.ducklake' (DATA_PATH 's3://some-bucket', CATALOG 'test')
+ATTACH 'ducklake:autoload_problem.ducklake' (DATA_PATH 's3://some-bucket', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 DETACH autoload_problem
 
 statement ok
-ATTACH 'ducklake:autoload_problem.ducklake' (CATALOG 'test')
+ATTACH 'ducklake:autoload_problem.ducklake' (CATALOG 'test', CREATE_IF_NOT_EXISTS true);
 
 query I
 SELECT value FROM autoload_problem.options() WHERE option_name='data_path'

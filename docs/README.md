@@ -34,12 +34,16 @@ FORCE INSTALL ducklake FROM core_nightly;
 
 DuckLake databases can be attached using the  [`ATTACH`](https://duckdb.org/docs/stable/sql/statements/attach.html) syntax, after which tables can be created, modified and queried using standard SQL.
 
-**Note:** This fork requires `CATALOG_ID` for multi-tenant isolation. See [DUCKLAKE.md](../DUCKLAKE.md) for details.
+**Note:** This fork requires `CATALOG` for multi-tenant isolation. See [DUCKLAKE.md](../DUCKLAKE.md) for details.
 
 Below is a short usage example that stores the metadata in a DuckDB database file called `metadata.ducklake`, and the data in Parquet files in the `file_path/my-catalog/` directory:
 
 ```sql
-ATTACH 'ducklake:metadata.ducklake' AS my_ducklake (DATA_PATH 'file_path/', CATALOG_ID 'my-catalog');
+ATTACH 'ducklake:metadata.ducklake' AS my_ducklake (
+  DATA_PATH 'file_path/',
+  CATALOG 'my-catalog',
+  CREATE_IF_NOT_EXISTS true
+);
 USE my_ducklake;
 CREATE TABLE my_ducklake.my_table(id INTEGER, val VARCHAR);
 INSERT INTO my_ducklake.my_table VALUES (1, 'Hello'), (2, 'World');

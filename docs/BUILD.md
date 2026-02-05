@@ -86,7 +86,11 @@ The `-unsigned` flag allows loading locally-built extensions.
 LOAD 'build/release/extension/ducklake/ducklake.duckdb_extension';
 
 -- Create a DuckLake catalog with local metadata
-ATTACH 'ducklake:/tmp/my_lakehouse.db' AS lake (DATA_PATH '/tmp/lakehouse_data');
+ATTACH 'ducklake:/tmp/my_lakehouse.db' AS lake (
+  DATA_PATH '/tmp/lakehouse_data',
+  CATALOG 'my-catalog',
+  CREATE_IF_NOT_EXISTS true
+);
 USE lake;
 
 CREATE TABLE events (id INT, ts TIMESTAMP);
@@ -102,7 +106,9 @@ LOAD 'build/release/extension/postgres_scanner/postgres_scanner.duckdb_extension
 
 ATTACH 'ducklake:postgres:dbname=mydb user=myuser' AS lake (
   DATA_PATH '/data/lakehouse',
-  METADATA_SCHEMA 'ducklake'
+  METADATA_SCHEMA 'ducklake',
+  CATALOG 'my-catalog',
+  CREATE_IF_NOT_EXISTS true
 );
 ```
 

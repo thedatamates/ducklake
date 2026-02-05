@@ -11,7 +11,7 @@ test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
 test-env DATA_PATH __TEST_DIR__
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_add_files_uuid', CATALOG 'test')
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_add_files_uuid', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 COPY (SELECT uuid() AS col1) TO '${DATA_PATH}/uuid.parquet';

@@ -64,7 +64,8 @@ INSTALL ducklake; LOAD ducklake;
 -- Attach with required CATALOG name
 ATTACH 'ducklake:my_catalog.ducklake' AS my_lake (
     DATA_PATH '/data/files/',
-    CATALOG 'my-catalog'
+    CATALOG 'my-catalog',
+    CREATE_IF_NOT_EXISTS true
 );
 
 USE my_lake;
@@ -73,6 +74,7 @@ INSERT INTO test VALUES (1, 'hello');
 ```
 
 **CATALOG is mandatory.** Every DuckLake attachment must specify a catalog name.
+`CREATE_IF_NOT_EXISTS` defaults to `false`, so set it to `true` when bootstrapping a new metadata catalog.
 
 ---
 
@@ -206,7 +208,7 @@ ATTACH 'ducklake:<metadata_path>' AS <alias> (
 | `SNAPSHOT_TIME` | No | (latest) | Attach at specific timestamp (read-only) |
 | `ENCRYPTED` | No | `AUTOMATIC` | Enable/disable encryption (inherits from existing catalog) |
 | `DATA_INLINING_ROW_LIMIT` | No | `0` | Max rows to inline in catalog (0 = disabled) |
-| `CREATE_IF_NOT_EXISTS` | No | `true` | Create new DuckLake if not found |
+| `CREATE_IF_NOT_EXISTS` | No | `false` | Create new DuckLake if not found |
 | `MIGRATE_IF_REQUIRED` | No | `true` | Auto-migrate older DuckLake versions |
 | `OVERRIDE_DATA_PATH` | No | `false` | Allow different DATA_PATH than stored in catalog |
 
@@ -580,7 +582,7 @@ ATTACH 'ducklake:...' AS lake (CATALOG 'x', ENCRYPTED true);
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| "CATALOG is required" | Missing CATALOG option | Add `CATALOG 'name'` to ATTACH |
+| "CATALOG is required. Please provide CATALOG when attaching the database." | Missing CATALOG option | Add `CATALOG 'name'` to ATTACH |
 | "Catalog 'x' does not exist" | Catalog not in database | Use `CREATE_IF_NOT_EXISTS true` |
 | "Unique file handle conflict" | Same DuckDB file attached twice | Use PostgreSQL for shared metadata |
 

@@ -7,7 +7,7 @@ require ducklake
 require parquet
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/fork_meta.db' AS parent_catalog (DATA_PATH '__TEST_DIR__/fork_data', CATALOG 'parent');
+ATTACH 'ducklake:__TEST_DIR__/fork_meta.db' AS parent_catalog (DATA_PATH '__TEST_DIR__/fork_data', CATALOG 'parent', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE parent_catalog;
@@ -48,7 +48,7 @@ statement ok
 DETACH parent_catalog;
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/fork_meta.db' AS forked_catalog (DATA_PATH '__TEST_DIR__/fork_data', CATALOG 'forked');
+ATTACH 'ducklake:__TEST_DIR__/fork_meta.db' AS forked_catalog (DATA_PATH '__TEST_DIR__/fork_data', CATALOG 'forked', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE forked_catalog;
@@ -85,7 +85,7 @@ statement ok
 DETACH forked_catalog;
 
 statement ok
-ATTACH 'ducklake:__TEST_DIR__/fork_meta.db' AS parent_catalog (DATA_PATH '__TEST_DIR__/fork_data', CATALOG 'parent');
+ATTACH 'ducklake:__TEST_DIR__/fork_meta.db' AS parent_catalog (DATA_PATH '__TEST_DIR__/fork_data', CATALOG 'parent', CREATE_IF_NOT_EXISTS true);
 
 statement ok
 USE parent_catalog;

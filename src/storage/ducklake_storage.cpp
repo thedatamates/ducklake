@@ -102,6 +102,9 @@ static unique_ptr<Catalog> DuckLakeAttach(optional_ptr<StorageExtensionInfo> sto
 	if (options.access_mode == AccessMode::READ_ONLY && !is_create_if_not_exists_set) {
 		options.create_if_not_exists = false;
 	}
+	if (options.catalog_name.empty()) {
+		throw InvalidInputException("CATALOG is required. Please provide CATALOG when attaching the database.");
+	}
 	if (options.metadata_database.empty()) {
 		options.metadata_database = "__ducklake_metadata_" + name;
 	}
