@@ -66,7 +66,13 @@ unique_ptr<QueryResult> PostgresMetadataManager::Query(DuckLakeSnapshot snapshot
 	return ExecuteQuery(snapshot, query, "postgres_query");
 }
 
+bool PostgresMetadataManager::UseFreshMetadataReads() const {
+	return false;
+}
+
 string PostgresMetadataManager::GetLatestSnapshotQuery() const {
+	// Keep this MAX() form instead of ORDER BY ... DESC LIMIT 1 to mirror local metadata behavior
+	// and avoid regressions in concurrency-sensitive snapshot visibility paths.
 	return R"(
 		SELECT * FROM postgres_query({METADATA_CATALOG_NAME_LITERAL},
 			'SELECT snapshot_id, schema_version, next_catalog_id, next_file_id

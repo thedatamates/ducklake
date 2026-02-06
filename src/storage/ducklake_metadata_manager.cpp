@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot_lineage(
     catalog_id BIGINT NOT NULL,
     previous_snapshot_id BIGINT NOT NULL,
     snapshot_id BIGINT NOT NULL,
+    -- Enforce linear ancestry per catalog: a snapshot can have at most one direct successor.
     PRIMARY KEY (catalog_id, previous_snapshot_id)
 );
 )");
@@ -100,7 +101,6 @@ CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_metadata(
     scope VARCHAR,
     scope_id BIGINT
 );
-CREATE SEQUENCE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot_id_seq START 1;
 CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot(
     snapshot_id BIGINT PRIMARY KEY,
     snapshot_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot_lineage(
     catalog_id BIGINT NOT NULL,
     previous_snapshot_id BIGINT NOT NULL,
     snapshot_id BIGINT NOT NULL,
+    -- Enforce linear ancestry per catalog: a snapshot can have at most one direct successor.
     PRIMARY KEY (catalog_id, previous_snapshot_id)
 );
 CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_catalog(
@@ -2810,11 +2811,11 @@ WHERE ducklake_table_stats.catalog_id = {CATALOG_ID} AND record_count IS NOT NUL
 ORDER BY table_id NULLS FIRST;
 	)";
 	unique_ptr<QueryResult> result;
-	if (UsesPostgresMetadata(transaction.GetCatalog())) {
-		result = Query(start_snapshot, query);
-	} else {
+	if (UseFreshMetadataReads()) {
 		// Use a fresh metadata snapshot for conflict checks to avoid stale reads from the writer transaction.
 		result = transaction.QueryFresh(start_snapshot, query);
+	} else {
+		result = Query(start_snapshot, query);
 	}
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to commit DuckLake transaction - failed to get snapshot and snapshot "
@@ -2853,11 +2854,11 @@ DuckLakeMetadataManager::GetFilesDeletedOrDroppedAfterSnapshot(const DuckLakeSna
 	JOIN {METADATA_CATALOG}.ducklake_table t ON df.catalog_id = t.catalog_id AND df.table_id = t.table_id
 	WHERE df.end_snapshot IS NOT NULL AND df.end_snapshot > {SNAPSHOT_ID} AND t.catalog_id = {CATALOG_ID}
 	)";
-	if (UsesPostgresMetadata(transaction.GetCatalog())) {
-		result = transaction.Query(start_snapshot, query);
-	} else {
+	if (UseFreshMetadataReads()) {
 		// Use a fresh metadata snapshot for conflict checks to avoid stale reads from the writer transaction.
 		result = transaction.QueryFresh(start_snapshot, query);
+	} else {
+		result = transaction.Query(start_snapshot, query);
 	}
 	if (result->HasError()) {
 		result->GetErrorObject().Throw(
@@ -2904,11 +2905,17 @@ static optional_idx TryGetVisibleSnapshotRowCount(DuckLakeTransaction &transacti
 }
 
 string DuckLakeMetadataManager::GetLatestSnapshotQuery() const {
+	// Keep this MAX() form instead of ORDER BY ... DESC LIMIT 1. Under concurrent local metadata
+	// writers, this shape has shown more stable visibility across transaction boundaries.
 	return R"(
 SELECT snapshot_id, schema_version, next_catalog_id, next_file_id
 FROM {METADATA_CATALOG}.ducklake_snapshot
 WHERE snapshot_id = (SELECT MAX(snapshot_id) FROM {METADATA_CATALOG}.ducklake_snapshot);
 )";
+}
+
+bool DuckLakeMetadataManager::UseFreshMetadataReads() const {
+	return true;
 }
 
 unique_ptr<DuckLakeSnapshot> DuckLakeMetadataManager::GetSnapshot() {
@@ -2921,7 +2928,7 @@ unique_ptr<DuckLakeSnapshot> DuckLakeMetadataManager::GetSnapshot() {
 		return snapshot;
 	}
 	optional_idx fresh_visible_snapshot_count;
-	if (!UsesPostgresMetadata(transaction.GetCatalog())) {
+	if (UseFreshMetadataReads()) {
 		// Local metadata transactions can very occasionally observe an empty snapshot view under
 		// concurrent attach/retry boundaries. Re-read from a fresh metadata connection before failing.
 		auto fresh_result = transaction.QueryFresh(GetLatestSnapshotQuery());

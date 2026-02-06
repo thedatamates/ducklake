@@ -28,6 +28,7 @@ CREATE TABLE ducklake_snapshot_lineage(
     catalog_id BIGINT NOT NULL,
     previous_snapshot_id BIGINT NOT NULL,
     snapshot_id BIGINT NOT NULL,
+    -- Enforce linear ancestry per catalog: a snapshot can have at most one direct successor.
     PRIMARY KEY (catalog_id, previous_snapshot_id)
 );
 

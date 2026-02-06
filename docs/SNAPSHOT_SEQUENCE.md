@@ -134,6 +134,67 @@ Used grep gate to confirm no active write-path `snapshot_id++` / `+ 1` allocatio
 3. Add more stress/failure-injection coverage around missed-conflict scenarios under high contention.
 4. Define a concrete non-rebuild migration path for legacy pre-fix metadata stores if needed.
 
-## 11. Canonical documentation map
+## 11. Latest-snapshot query shape research (`ORDER BY ... DESC LIMIT 1` vs `MAX(...)`)
+
+### Why this section exists
+
+We observed intermittent local metadata failures of:
+
+1. `No snapshot found in DuckLake`
+
+This occurred under concurrency despite snapshot rows existing. We changed latest-snapshot reads from:
+
+1. `ORDER BY snapshot_id DESC LIMIT 1`
+
+to:
+
+1. `WHERE snapshot_id = (SELECT MAX(snapshot_id) ...)`
+
+and paired local metadata reads with a fresh-connection retry before failing.
+
+### What DuckDB source inspection showed
+
+The two query forms are semantically equivalent SQL, but they are not execution-equivalent in DuckDB.
+
+1. `ORDER BY ... LIMIT 1` is optimized via TopN rewrite:
+   `src/optimizer/topn_optimizer.cpp` (`LogicalLimit + LogicalOrder` -> `LogicalTopN`).
+2. TopN pushdown adds an optional dynamic filter on scan:
+   `src/optimizer/topn_optimizer.cpp`, `src/planner/filter/dynamic_filter.cpp`.
+3. With default optimizers, TopN can be transformed by late materialization into a rowid-based SEMI JOIN shape:
+   `src/optimizer/late_materialization.cpp`.
+4. Optional filters are pruning-only and not required for correctness:
+   `src/planner/filter/optional_filter.cpp`, `src/storage/table/row_group.cpp`.
+5. `MAX(...)` takes a different plan family:
+   aggregate subquery (`UNGROUPED_AGGREGATE max`) + equality lookup, often hitting index scan on PK in the outer branch.
+
+### What we validated experimentally
+
+Using the local built DuckDB binary and C++ harnesses:
+
+1. `EXPLAIN`/`EXPLAIN ANALYZE` confirmed distinct physical plans:
+   `ORDER BY ... LIMIT 1` used TopN path; `MAX(...)` used aggregate + equality path.
+2. A two-connection stale-snapshot test showed both forms respect transaction visibility and return the same snapshot in a fixed transaction.
+3. A same-process threaded insert/read stress harness did not reproduce an empty result in standalone DuckDB for either shape.
+
+### What we can conclude
+
+1. The stabilization is not about SQL semantics; it is about avoiding a more complex operator path under concurrency-sensitive metadata workloads.
+2. `MAX(...)` is plausibly more robust for this use case because it bypasses TopN + late-materialization rowid/semi-join behavior.
+3. The fresh-connection fallback remains important for local metadata visibility boundaries in DuckLake integration code.
+
+### What remains uncertain
+
+We do not yet have a single minimal, deterministic DuckDB-core repro that proves the exact low-level mechanism of the intermittent empty result in DuckLake. The highest-probability fault domain is still the `ORDER BY ... LIMIT 1` TopN/late-materialization path under DuckLake’s attach/retry concurrency boundaries.
+
+### Current guidance
+
+1. Keep `MAX(...)` as the latest-snapshot query shape in DuckLake.
+2. Keep fresh-connection retry on local metadata reads before terminal failure.
+3. If we pursue upstream filing, include:
+   - physical plan diff (`ORDER BY ... LIMIT 1` vs `MAX(...)`)
+   - DuckLake-specific concurrency workload
+   - empty-result diagnostics (`visible snapshot rows` vs `fresh visible snapshot rows`)
+
+## 12. Canonical documentation map
 
 1. This file is the authoritative snapshot-sequence implementation and validation record for this fork.

@@ -28,6 +28,7 @@ public:
 	idx_t GetNextSnapshotId() override;
 
 protected:
+	bool UseFreshMetadataReads() const override;
 	string GetLatestSnapshotQuery() const override;
 
 private:

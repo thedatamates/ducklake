@@ -218,6 +218,9 @@ public:
 	string StorePath(string path);
 
 protected:
+	//! Whether metadata conflict/snapshot reads should use a fresh metadata connection.
+	//! Local metadata needs fresh reads to avoid stale visibility from the writer transaction.
+	virtual bool UseFreshMetadataReads() const;
 	virtual string GetLatestSnapshotQuery() const;
 
 protected:
