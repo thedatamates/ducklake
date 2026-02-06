@@ -132,7 +132,7 @@ static void DuckLakeForkCatalogExecute(ClientContext &context, TableFunctionInpu
 	string query = R"(
 SELECT snapshot_id, next_catalog_id, next_file_id, schema_version
 FROM {METADATA_CATALOG}.ducklake_snapshot
-ORDER BY snapshot_id DESC LIMIT 1
+WHERE snapshot_id = (SELECT MAX(snapshot_id) FROM {METADATA_CATALOG}.ducklake_snapshot)
 )";
 	auto result = transaction.Query(query);
 	if (result->HasError()) {

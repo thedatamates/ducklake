@@ -491,7 +491,7 @@ idx_t DuckLakeMetadataManager::CreateCatalog(const string &catalog_name) {
 	string query = R"(
 SELECT snapshot_id, schema_version, next_catalog_id, next_file_id
 FROM {METADATA_CATALOG}.ducklake_snapshot
-ORDER BY snapshot_id DESC LIMIT 1
+WHERE snapshot_id = (SELECT MAX(snapshot_id) FROM {METADATA_CATALOG}.ducklake_snapshot)
 )";
 	auto result = transaction.Query(query);
 	if (result->HasError()) {
@@ -2886,8 +2886,29 @@ static unique_ptr<DuckLakeSnapshot> TryGetSnapshotInternal(QueryResult &result) 
 	return snapshot;
 }
 
+static optional_idx TryGetVisibleSnapshotRowCount(DuckLakeTransaction &transaction, bool use_fresh_connection) {
+	unique_ptr<QueryResult> count_result;
+	if (use_fresh_connection) {
+		count_result = transaction.QueryFresh("SELECT COUNT(*) FROM {METADATA_CATALOG}.ducklake_snapshot");
+	} else {
+		count_result = transaction.Query("SELECT COUNT(*) FROM {METADATA_CATALOG}.ducklake_snapshot");
+	}
+	if (count_result->HasError()) {
+		return optional_idx();
+	}
+	auto chunk = count_result->Fetch();
+	if (!chunk || chunk->size() != 1 || chunk->ColumnCount() != 1) {
+		return optional_idx();
+	}
+	return optional_idx(chunk->GetValue(0, 0).GetValue<idx_t>());
+}
+
 string DuckLakeMetadataManager::GetLatestSnapshotQuery() const {
-	return R"(SELECT snapshot_id, schema_version, next_catalog_id, next_file_id FROM {METADATA_CATALOG}.ducklake_snapshot ORDER BY snapshot_id DESC LIMIT 1;)";
+	return R"(
+SELECT snapshot_id, schema_version, next_catalog_id, next_file_id
+FROM {METADATA_CATALOG}.ducklake_snapshot
+WHERE snapshot_id = (SELECT MAX(snapshot_id) FROM {METADATA_CATALOG}.ducklake_snapshot);
+)";
 }
 
 unique_ptr<DuckLakeSnapshot> DuckLakeMetadataManager::GetSnapshot() {
@@ -2896,10 +2917,31 @@ unique_ptr<DuckLakeSnapshot> DuckLakeMetadataManager::GetSnapshot() {
 		result->GetErrorObject().Throw("Failed to query most recent snapshot for DuckLake: ");
 	}
 	auto snapshot = TryGetSnapshotInternal(*result);
-	if (!snapshot) {
-		throw InvalidInputException("No snapshot found in DuckLake");
+	if (snapshot) {
+		return snapshot;
 	}
-	return snapshot;
+	optional_idx fresh_visible_snapshot_count;
+	if (!UsesPostgresMetadata(transaction.GetCatalog())) {
+		// Local metadata transactions can very occasionally observe an empty snapshot view under
+		// concurrent attach/retry boundaries. Re-read from a fresh metadata connection before failing.
+		auto fresh_result = transaction.QueryFresh(GetLatestSnapshotQuery());
+		if (fresh_result->HasError()) {
+			fresh_result->GetErrorObject().Throw("Failed to query most recent snapshot for DuckLake: ");
+		}
+		snapshot = TryGetSnapshotInternal(*fresh_result);
+		if (snapshot) {
+			return snapshot;
+		}
+		fresh_visible_snapshot_count = TryGetVisibleSnapshotRowCount(transaction, true);
+	}
+	auto visible_snapshot_count = TryGetVisibleSnapshotRowCount(transaction, false);
+	string visible_snapshot_count_str =
+	    visible_snapshot_count.IsValid() ? to_string(visible_snapshot_count.GetIndex()) : "unknown";
+	string fresh_visible_snapshot_count_str =
+	    fresh_visible_snapshot_count.IsValid() ? to_string(fresh_visible_snapshot_count.GetIndex()) : "unknown";
+	throw InvalidInputException(StringUtil::Format(
+	    "No snapshot found in DuckLake (visible snapshot rows: %s, fresh visible snapshot rows: %s)",
+	    visible_snapshot_count_str, fresh_visible_snapshot_count_str));
 }
 
 unique_ptr<DuckLakeSnapshot> DuckLakeMetadataManager::GetSnapshot(BoundAtClause &at_clause, SnapshotBound bound) {
