@@ -42,3 +42,13 @@ query II
 SELECT COUNT(*), SUM(key) FROM ducklake.tbl
 ----
 2	1
+
+query I
+SELECT COUNT(*) FROM (
+    SELECT snapshot_id
+    FROM ducklake_snapshots('ducklake')
+    GROUP BY snapshot_id
+    HAVING COUNT(*) > 1
+);
+----
+0

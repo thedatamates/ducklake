@@ -75,18 +75,20 @@ void DuckLakeTransaction::Rollback() {
 	table_data_changes.clear();
 }
 
+void DuckLakeTransaction::ConfigureMetadataSearchPath(Connection &connection_ref) {
+	auto &client_data = ClientData::Get(*connection_ref.context);
+	CatalogSearchEntry metadata_entry(ducklake_catalog.MetadataDatabaseName(), ducklake_catalog.MetadataSchemaName());
+	if (metadata_entry.schema.empty()) {
+		metadata_entry.schema = "main";
+	}
+	client_data.catalog_search_path->Set(metadata_entry, CatalogSetPathType::SET_DIRECTLY);
+}
+
 Connection &DuckLakeTransaction::GetConnection() {
 	lock_guard<mutex> lock(connection_lock);
 	if (!connection) {
 		connection = make_uniq<Connection>(db);
-		// set the search path to the metadata catalog
-		auto &client_data = ClientData::Get(*connection->context);
-		CatalogSearchEntry metadata_entry(ducklake_catalog.MetadataDatabaseName(),
-		                                  ducklake_catalog.MetadataSchemaName());
-		if (metadata_entry.schema.empty()) {
-			metadata_entry.schema = "main";
-		}
-		client_data.catalog_search_path->Set(metadata_entry, CatalogSetPathType::SET_DIRECTLY);
+		ConfigureMetadataSearchPath(*connection);
 		connection->BeginTransaction();
 	}
 	return *connection;
@@ -1276,9 +1278,13 @@ NewDataInfo DuckLakeTransaction::GetNewDataFiles(string &batch_query, DuckLakeCo
 			}
 
 			// merge the stats into the new global states
-			new_stats.record_count += file.row_count;
+			// Files with max_partial_file_snapshot originate from flushed inlined data.
+			// Their rows were already accounted for when they were inlined.
+			if (!file.max_partial_file_snapshot.IsValid()) {
+				new_stats.record_count += file.row_count;
+				new_stats.next_row_id += file.row_count;
+			}
 			new_stats.table_size_bytes += file.file_size_bytes;
-			new_stats.next_row_id += file.row_count;
 			for (auto &entry : file.column_stats) {
 				new_stats.MergeStats(entry.first, entry.second);
 			}
@@ -1671,22 +1677,20 @@ void DuckLakeTransaction::FlushChanges() {
 		bool can_retry;
 		try {
 			can_retry = false;
-			if (i > 0) {
-				// we failed our first commit due to another transaction committing
-				// retry - but first check for conflicts
-				commit_stats_snapshot = CheckForConflicts(transaction_snapshot, transaction_changes);
-				stats = &commit_stats_snapshot.stats;
-			} else {
-				commit_stats_snapshot.snapshot = GetSnapshot();
-			}
-			commit_snapshot.snapshot_id++;
+			// Refresh the latest allocator state and validate transaction-level conflicts before every attempt.
+			commit_stats_snapshot = CheckForConflicts(transaction_snapshot, transaction_changes);
+			stats = &commit_stats_snapshot.stats;
+			// Only retry failures after conflict validation has succeeded.
+			can_retry = true;
+			auto previous_snapshot_id = commit_snapshot.snapshot_id;
+			commit_snapshot.snapshot_id = metadata_manager->GetNextSnapshotId();
 			if (SchemaChangesMade()) {
 				// we changed the schema - need to get a new schema version
 				commit_snapshot.schema_version++;
 			}
-			can_retry = true;
 			DuckLakeCommitState commit_state(commit_snapshot);
-			string batch_queries = CommitChanges(commit_state, transaction_changes, stats);
+			string batch_queries = metadata_manager->InsertSnapshotLineage(previous_snapshot_id);
+			batch_queries += CommitChanges(commit_state, transaction_changes, stats);
 
 			// write the new snapshot
 			batch_queries += metadata_manager->InsertSnapshot();
@@ -1769,8 +1773,7 @@ void DuckLakeTransaction::DeleteInlinedData(const DuckLakeInlinedTableInfo &inli
 	metadata_manager.DeleteInlinedData(inlined_table);
 }
 
-unique_ptr<QueryResult> DuckLakeTransaction::Query(string query) {
-	auto &connection = GetConnection();
+string DuckLakeTransaction::ExpandMetadataQuery(string query) const {
 	auto catalog_identifier = DuckLakeUtil::SQLIdentifierToString(ducklake_catalog.MetadataDatabaseName());
 	auto catalog_literal = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.MetadataDatabaseName());
 	auto schema_identifier = DuckLakeUtil::SQLIdentifierToString(ducklake_catalog.MetadataSchemaName());
@@ -1791,7 +1794,12 @@ unique_ptr<QueryResult> DuckLakeTransaction::Query(string query) {
 	query = StringUtil::Replace(query, "{CATALOG_ID}", catalog_id);
 	auto catalog_name = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.CatalogName());
 	query = StringUtil::Replace(query, "{CATALOG_NAME}", catalog_name);
-	return connection.Query(query);
+	return query;
+}
+
+unique_ptr<QueryResult> DuckLakeTransaction::Query(string query) {
+	auto &connection = GetConnection();
+	return connection.Query(ExpandMetadataQuery(std::move(query)));
 }
 
 unique_ptr<QueryResult> DuckLakeTransaction::Query(DuckLakeSnapshot snapshot, string query) {
@@ -1804,6 +1812,23 @@ unique_ptr<QueryResult> DuckLakeTransaction::Query(DuckLakeSnapshot snapshot, st
 	query = StringUtil::Replace(query, "{COMMIT_EXTRA_INFO}", commit_info.commit_extra_info.ToSQLString());
 
 	return Query(std::move(query));
+}
+
+unique_ptr<QueryResult> DuckLakeTransaction::QueryFresh(string query) {
+	Connection fresh_connection(db);
+	ConfigureMetadataSearchPath(fresh_connection);
+	return fresh_connection.Query(ExpandMetadataQuery(std::move(query)));
+}
+
+unique_ptr<QueryResult> DuckLakeTransaction::QueryFresh(DuckLakeSnapshot snapshot, string query) {
+	query = StringUtil::Replace(query, "{SNAPSHOT_ID}", to_string(snapshot.snapshot_id));
+	query = StringUtil::Replace(query, "{SCHEMA_VERSION}", to_string(snapshot.schema_version));
+	query = StringUtil::Replace(query, "{NEXT_CATALOG_ID}", to_string(snapshot.next_catalog_id));
+	query = StringUtil::Replace(query, "{NEXT_FILE_ID}", to_string(snapshot.next_file_id));
+	query = StringUtil::Replace(query, "{AUTHOR}", commit_info.author.ToSQLString());
+	query = StringUtil::Replace(query, "{COMMIT_MESSAGE}", commit_info.commit_message.ToSQLString());
+	query = StringUtil::Replace(query, "{COMMIT_EXTRA_INFO}", commit_info.commit_extra_info.ToSQLString());
+	return QueryFresh(std::move(query));
 }
 
 string DuckLakeTransaction::GetDefaultSchemaName() {

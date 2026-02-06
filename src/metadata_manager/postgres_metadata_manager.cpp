@@ -80,4 +80,20 @@ void PostgresMetadataManager::CreateDuckLakeSchema(DuckLakeEncryption encryption
 	                  "Run: psql -d your_database -f schema/postgresql.sql");
 }
 
+idx_t PostgresMetadataManager::GetNextSnapshotId() {
+	// The postgres_* wrappers receive the metadata catalog as a separate argument, so only schema
+	// qualification belongs inside the remote SQL string passed to nextval().
+	string query = "SELECT nextval('{METADATA_SCHEMA_ESCAPED}.ducklake_snapshot_id_seq')";
+	auto current_snapshot = transaction.GetSnapshot();
+	auto result = Query(current_snapshot, query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to allocate next snapshot ID: ");
+	}
+	auto chunk = result->Fetch();
+	if (!chunk || chunk->size() == 0 || chunk->ColumnCount() != 1) {
+		throw IOException("Failed to allocate next snapshot ID: sequence query returned no rows");
+	}
+	return chunk->GetValue(0, 0).GetValue<idx_t>();
+}
+
 } // namespace duckdb

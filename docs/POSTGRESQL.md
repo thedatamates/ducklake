@@ -30,13 +30,13 @@ psql -U <username> -d ducklake -c "SET search_path TO ducklake;" \
 
 ### 3. Initialize Metadata
 
-The schema file creates the tables but DuckLake needs initial metadata:
+`schema/postgresql.sql` creates the bootstrap snapshot and initializes `ducklake_snapshot_id_seq`.
+You only need to set the `encrypted` metadata value:
 
 ```bash
 psql -U <username> -d ducklake -c "
 SET search_path TO ducklake;
 INSERT INTO ducklake_metadata (key, value) VALUES ('encrypted', 'false');
-INSERT INTO ducklake_snapshot (snapshot_id, schema_version, next_catalog_id, next_file_id) VALUES (0, 0, 0, 0);
 "
 ```
 

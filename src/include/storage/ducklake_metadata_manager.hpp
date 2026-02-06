@@ -111,6 +111,10 @@ public:
 
 	//! Lookup catalog by name, returns catalog_id or invalid idx if not found
 	virtual optional_idx LookupCatalogByName(const string &catalog_name);
+	//! Allocate the next globally unique snapshot ID.
+	//! Local DuckLake metadata relies on the metadata search_path, so the default implementation
+	//! intentionally uses an unqualified sequence name.
+	virtual idx_t GetNextSnapshotId();
 	//! Create a new catalog entry, returns the new catalog_id
 	virtual idx_t CreateCatalog(const string &catalog_name);
 
@@ -132,7 +136,7 @@ public:
 	virtual vector<DuckLakeCompactionFileEntry> GetFilesForCompaction(DuckLakeTableEntry &table, CompactionType type,
 	                                                                  double deletion_threshold,
 	                                                                  DuckLakeSnapshot snapshot);
-	virtual idx_t GetCatalogIdForSchema(idx_t schema_id);
+	virtual idx_t GetCatalogIdForSchema(idx_t schema_id, TableIndex table_id);
 	virtual vector<DuckLakeFileForCleanup> GetOldFilesForCleanup(const string &filter);
 	virtual vector<DuckLakeFileForCleanup> GetOrphanFilesForCleanup(const string &filter, const string &separator);
 	virtual vector<DuckLakeFileForCleanup> GetFilesForCleanup(const string &filter, CleanupType type,
@@ -178,6 +182,7 @@ public:
 	virtual string WriteDeleteRewrites(const vector<DuckLakeCompactedFileInfo> &compactions);
 	virtual string WriteCompactions(const vector<DuckLakeCompactedFileInfo> &compactions, CompactionType type);
 	virtual string InsertSnapshot();
+	virtual string InsertSnapshotLineage(idx_t previous_snapshot_id);
 	virtual string WriteSnapshotChanges(const SnapshotChangeInfo &change_info,
 	                                    const DuckLakeSnapshotCommit &commit_info);
 	virtual string UpdateGlobalTableStats(const DuckLakeGlobalStatsInfo &stats);

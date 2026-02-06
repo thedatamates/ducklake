@@ -145,10 +145,18 @@ ROLLBACK;
 statement ok
 INSERT INTO ducklake.test VALUES (6, 'Hannes');
 
-query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 9
+query I
+SELECT CASE
+    WHEN (SELECT snapshot_id FROM ducklake.snapshots() ORDER BY snapshot_id DESC LIMIT 1) > 8 THEN 1
+    ELSE 0
+END;
 ----
-9	NULL	NULL
+1
+
+query II
+SELECT author, commit_message FROM ducklake.snapshots() ORDER BY snapshot_id DESC LIMIT 1
+----
+NULL	NULL
 
 statement ok
 CALL ducklake.set_option('require_commit_message', True)
@@ -170,10 +178,10 @@ CALL ducklake.set_commit_message('Pedro', 'Adding Morgana');
 statement ok
 Commit;
 
-query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 10
+query II
+SELECT author, commit_message FROM ducklake.snapshots() where commit_message = 'Adding Morgana'
 ----
-10	Pedro	Adding Morgana
+Pedro	Adding Morgana
 
 
 statement error
@@ -189,10 +197,10 @@ CALL ducklake.set_option('require_commit_message', False)
 statement ok
 INSERT INTO ducklake.test VALUES (8, 'Odara');
 
-query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 11
+query II
+SELECT author, commit_message FROM ducklake.snapshots() ORDER BY snapshot_id DESC LIMIT 1
 ----
-11	NULL	NULL
+NULL	NULL
 
 # Changing commit message afterwards
 statement ok
@@ -211,16 +219,16 @@ statement ok
 COMMIT;
 
 # Last set should survive
-query III
-SELECT snapshot_id, author, commit_message FROM ducklake.snapshots() where snapshot_id = 12
+query II
+SELECT author, commit_message FROM ducklake.snapshots() where commit_message = 'Inserting Teddy'
 ----
-12	Mark	Inserting Teddy
+Mark	Inserting Teddy
 
 # Lets check that our previous insertion has a null value for extra info
-query IIII
-SELECT snapshot_id, author, commit_message, commit_extra_info FROM ducklake.snapshots() where snapshot_id = 12
+query III
+SELECT author, commit_message, commit_extra_info FROM ducklake.snapshots() where commit_message = 'Inserting Teddy'
 ----
-12	Mark	Inserting Teddy	NULL
+Mark	Inserting Teddy	NULL
 
 # Let's add some extra info to the next commit
 
@@ -237,10 +245,10 @@ statement ok
 COMMIT;
 
 # Lets check ollie is inserted with the correct extra_info
-query IIII
-SELECT snapshot_id, author, commit_message, commit_extra_info FROM ducklake.snapshots() where snapshot_id = 13
+query III
+SELECT author, commit_message, commit_extra_info FROM ducklake.snapshots() where commit_message = 'Inserting Ollie'
 ----
-13	Pedro	Inserting Ollie	{'barks':7, 'cuteness':10}
+Pedro	Inserting Ollie	{'barks':7, 'cuteness':10}
 
 # Empty is also valid
 statement ok
@@ -256,10 +264,10 @@ statement ok
 COMMIT;
 
 # Lets check Jack Black is inserted with the correct extra_info
-query IIII
-SELECT snapshot_id, author, commit_message, commit_extra_info FROM ducklake.snapshots() where snapshot_id = 14
+query III
+SELECT author, commit_message, commit_extra_info FROM ducklake.snapshots() where commit_message = 'Inserting the greatest musician of the world.'
 ----
-14	Pedro	Inserting the greatest musician of the world.	(empty)
+Pedro	Inserting the greatest musician of the world.	(empty)
 
 # Check all data was inserted correctly at the end
 query II

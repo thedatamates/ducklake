@@ -23,6 +23,9 @@ public:
 	unique_ptr<QueryResult> Query(DuckLakeSnapshot snapshot, string &query) override;
 
 	void CreateDuckLakeSchema(DuckLakeEncryption encryption) override;
+	//! PostgreSQL metadata queries are executed through postgres_query/postgres_execute where
+	//! the catalog/database is provided out-of-band. This override schema-qualifies the sequence.
+	idx_t GetNextSnapshotId() override;
 
 protected:
 	string GetLatestSnapshotQuery() const override;

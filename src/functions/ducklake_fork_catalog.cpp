@@ -142,8 +142,8 @@ ORDER BY snapshot_id DESC LIMIT 1
 	if (!chunk || chunk->size() == 0) {
 		throw IOException("No snapshots found. Cannot fork.");
 	}
-	idx_t current_snapshot_id = chunk->GetValue(0, 0).GetValue<idx_t>();
-	idx_t new_snapshot_id = current_snapshot_id + 1;
+	idx_t previous_snapshot_id = chunk->GetValue(0, 0).GetValue<idx_t>();
+	idx_t new_snapshot_id = transaction.GetMetadataManager().GetNextSnapshotId();
 	idx_t new_catalog_id = chunk->GetValue(1, 0).GetValue<idx_t>();
 	idx_t next_catalog_id = new_catalog_id + 1;
 	idx_t next_file_id = chunk->GetValue(2, 0).GetValue<idx_t>();
@@ -166,6 +166,15 @@ ORDER BY snapshot_id DESC LIMIT 1
 	result = transaction.Query(query);
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to create snapshot for fork: ");
+	}
+
+	query = StringUtil::Format(
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_lineage "
+	    "(catalog_id, previous_snapshot_id, snapshot_id) VALUES (%llu, %llu, %llu)",
+	    new_catalog_id, previous_snapshot_id, new_snapshot_id);
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to record snapshot lineage for fork: ");
 	}
 
 	query = StringUtil::Format(

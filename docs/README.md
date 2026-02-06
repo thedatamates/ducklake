@@ -16,6 +16,13 @@ DuckLake is an open Lakehouse format that is built on SQL and Parquet. DuckLake 
 
 See the [DuckLake website](https://ducklake.select) for more information.
 
+## Additional Fork Docs
+
+- Build instructions: [BUILD.md](./BUILD.md)
+- PostgreSQL setup and behavior: [POSTGRESQL.md](./POSTGRESQL.md)
+- Snapshot allocation and conflict-visibility notes: [SNAPSHOT_SEQUENCE.md](./SNAPSHOT_SEQUENCE.md)
+- Architecture deep dive: [ARCHITECTURE.md](./ARCHITECTURE.md)
+
 ## Installation
 
 DuckLake can be installed using the `INSTALL` command:

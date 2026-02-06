@@ -612,4 +612,6 @@ CALL ducklake.set_option('parquet_row_group_size_bytes', '128MB');
 
 - Upstream: https://github.com/duckdb/ducklake
 - DuckDB Docs: https://duckdb.org/docs/stable/core_extensions/ducklake
+- Project docs index: ./docs/README.md
+- Snapshot allocation and conflict-visibility notes: ./docs/SNAPSHOT_SEQUENCE.md
 - License: MIT

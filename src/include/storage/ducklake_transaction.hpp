@@ -73,6 +73,10 @@ public:
 	}
 	unique_ptr<QueryResult> Query(DuckLakeSnapshot snapshot, string query);
 	unique_ptr<QueryResult> Query(string query);
+	//! Execute a metadata query on a short-lived connection with a fresh snapshot.
+	unique_ptr<QueryResult> QueryFresh(DuckLakeSnapshot snapshot, string query);
+	//! Execute a metadata query on a short-lived connection with a fresh snapshot.
+	unique_ptr<QueryResult> QueryFresh(string query);
 	Connection &GetConnection();
 
 	DuckLakeSnapshot GetSnapshot();
@@ -209,6 +213,8 @@ private:
 	                    reference<CatalogEntry> table_entry, NewTableInfo &result,
 	                    TransactionChangeInformation &transaction_changes);
 	CompactionInformation GetCompactionChanges(DuckLakeSnapshot &commit_snapshot, CompactionType type);
+	void ConfigureMetadataSearchPath(Connection &connection);
+	string ExpandMetadataQuery(string query) const;
 
 	void AlterEntryInternal(DuckLakeTableEntry &old_entry, unique_ptr<CatalogEntry> new_entry);
 	void AlterEntryInternal(DuckLakeViewEntry &old_entry, unique_ptr<CatalogEntry> new_entry);

@@ -78,9 +78,12 @@ statement ok con3
 COMMIT
 
 query I
-FROM ducklake_last_committed_snapshot('ducklake')
+SELECT CASE
+    WHEN (SELECT * FROM ducklake_last_committed_snapshot('ducklake')) > 3 THEN 1
+    ELSE 0
+END;
 ----
-4
+1
 
 statement ok
 DETACH ducklake
@@ -120,8 +123,11 @@ FROM ducklake_last_committed_snapshot('ducklake')
 
 endloop
 
-# 26 + 4
+# At least 26 new committed snapshots were created by inserts, with gaps allowed.
 query I
-FROM last_committed_snapshot()
+SELECT CASE
+    WHEN (SELECT * FROM last_committed_snapshot()) >= 30 THEN 1
+    ELSE 0
+END;
 ----
-30
+1

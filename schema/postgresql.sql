@@ -5,6 +5,8 @@ CREATE TABLE ducklake_metadata(
     scope_id BIGINT
 );
 
+CREATE SEQUENCE ducklake_snapshot_id_seq;
+
 CREATE TABLE ducklake_snapshot(
     snapshot_id BIGINT PRIMARY KEY,
     snapshot_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -20,6 +22,13 @@ CREATE TABLE ducklake_snapshot_changes(
     author VARCHAR,
     commit_message VARCHAR,
     commit_extra_info VARCHAR
+);
+
+CREATE TABLE ducklake_snapshot_lineage(
+    catalog_id BIGINT NOT NULL,
+    previous_snapshot_id BIGINT NOT NULL,
+    snapshot_id BIGINT NOT NULL,
+    PRIMARY KEY (catalog_id, previous_snapshot_id)
 );
 
 CREATE TABLE ducklake_catalog(
@@ -343,3 +352,5 @@ INSERT INTO ducklake_metadata (key, value) VALUES ('version', '0.5-dev1');
 -- Bootstrap snapshot required for DuckLake to create catalogs
 INSERT INTO ducklake_snapshot (snapshot_id, schema_version, next_catalog_id, next_file_id)
 VALUES (0, 0, 0, 0);
+
+SELECT setval('ducklake_snapshot_id_seq', 1, false);

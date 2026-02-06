@@ -1,0 +1,50 @@
+# name: test/sql/transaction/concurrent_snapshot_ids.test
+# description: validate snapshot IDs stay unique under concurrent commits
+# group: [transaction]
+
+require ducklake
+
+require parquet
+
+test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+
+test-env DATA_PATH __TEST_DIR__
+
+statement ok
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_concurrent_snapshot_ids', METADATA_CATALOG 'ducklake_meta', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
+
+statement ok
+SET ducklake_retry_wait_ms=10
+
+statement ok
+SET ducklake_retry_backoff=1.5
+
+statement ok
+SET ducklake_max_retry_count=50
+
+statement ok
+CREATE TABLE ducklake.t(i INTEGER);
+
+concurrentloop i 0 10
+
+query I
+INSERT INTO ducklake.t VALUES (${i})
+----
+1
+
+endloop
+
+query II
+SELECT COUNT(*), SUM(i) FROM ducklake.t;
+----
+10	45
+
+query I
+SELECT COUNT(*) FROM (
+    SELECT snapshot_id
+    FROM ducklake_snapshots('ducklake')
+    GROUP BY snapshot_id
+    HAVING COUNT(*) > 1
+);
+----
+0

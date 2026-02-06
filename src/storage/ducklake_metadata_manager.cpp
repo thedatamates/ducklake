@@ -37,6 +37,11 @@ unique_ptr<DuckLakeMetadataManager> DuckLakeMetadataManager::Create(DuckLakeTran
 	return make_uniq<DuckLakeMetadataManager>(transaction);
 }
 
+static bool UsesPostgresMetadata(const DuckLakeCatalog &catalog) {
+	auto &metadata_type = catalog.MetadataType();
+	return metadata_type == "postgres" || metadata_type == "postgres_scanner";
+}
+
 DuckLakeMetadataManager &DuckLakeMetadataManager::Get(DuckLakeTransaction &transaction) {
 	return transaction.GetMetadataManager();
 }
@@ -71,6 +76,19 @@ void DuckLakeMetadataManager::InitializeDuckLake(bool has_explicit_schema, DuckL
 		throw IOException("Unsupported DuckLake version: " + version + ". Expected 0.5-dev1. "
 		                  "This version requires a fresh v0.5 schema. Migration from older versions is not supported.");
 	}
+	if (!UsesPostgresMetadata(ducklake_catalog)) {
+		auto ensure_snapshot_lineage = transaction.Query(R"(
+CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot_lineage(
+    catalog_id BIGINT NOT NULL,
+    previous_snapshot_id BIGINT NOT NULL,
+    snapshot_id BIGINT NOT NULL,
+    PRIMARY KEY (catalog_id, previous_snapshot_id)
+);
+)");
+		if (ensure_snapshot_lineage->HasError()) {
+			ensure_snapshot_lineage->GetErrorObject().Throw("Failed to ensure snapshot lineage table: ");
+		}
+	}
 }
 
 void DuckLakeMetadataManager::CreateDuckLakeSchema(DuckLakeEncryption encryption) {
@@ -82,6 +100,7 @@ CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_metadata(
     scope VARCHAR,
     scope_id BIGINT
 );
+CREATE SEQUENCE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot_id_seq START 1;
 CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot(
     snapshot_id BIGINT PRIMARY KEY,
     snapshot_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -96,6 +115,12 @@ CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot_changes(
     author VARCHAR,
     commit_message VARCHAR,
     commit_extra_info VARCHAR
+);
+CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_snapshot_lineage(
+    catalog_id BIGINT NOT NULL,
+    previous_snapshot_id BIGINT NOT NULL,
+    snapshot_id BIGINT NOT NULL,
+    PRIMARY KEY (catalog_id, previous_snapshot_id)
 );
 CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_catalog(
     catalog_id BIGINT NOT NULL,
@@ -375,6 +400,13 @@ CREATE TABLE IF NOT EXISTS {METADATA_CATALOG}.ducklake_files_scheduled_for_delet
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to insert initial snapshot: ");
 	}
+
+	auto initialize_snapshot_sequence =
+	    "CREATE OR REPLACE SEQUENCE {METADATA_CATALOG}.ducklake_snapshot_id_seq START 1";
+	result = transaction.Query(initialize_snapshot_sequence);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to initialize snapshot ID sequence: ");
+	}
 }
 
 
@@ -441,6 +473,18 @@ optional_idx DuckLakeMetadataManager::LookupCatalogByName(const string &catalog_
 	return optional_idx(chunk->GetValue(0, 0).GetValue<idx_t>());
 }
 
+idx_t DuckLakeMetadataManager::GetNextSnapshotId() {
+	auto result = transaction.Query("SELECT nextval('ducklake_snapshot_id_seq')");
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to allocate next snapshot ID: ");
+	}
+	auto chunk = result->Fetch();
+	if (!chunk || chunk->size() == 0 || chunk->ColumnCount() != 1) {
+		throw IOException("Failed to allocate next snapshot ID: sequence query returned no rows");
+	}
+	return chunk->GetValue(0, 0).GetValue<idx_t>();
+}
+
 idx_t DuckLakeMetadataManager::CreateCatalog(const string &catalog_name) {
 	auto catalog_name_literal = DuckLakeUtil::SQLLiteralToString(catalog_name);
 
@@ -457,13 +501,13 @@ ORDER BY snapshot_id DESC LIMIT 1
 	if (!chunk || chunk->size() == 0) {
 		throw IOException("No snapshots found. The schema must be initialized first.");
 	}
-	idx_t current_snapshot_id = chunk->GetValue(0, 0).GetValue<idx_t>();
+	idx_t previous_snapshot_id = chunk->GetValue(0, 0).GetValue<idx_t>();
 	idx_t schema_version = chunk->GetValue(1, 0).GetValue<idx_t>();
 	idx_t new_catalog_id = chunk->GetValue(2, 0).GetValue<idx_t>();
 	idx_t next_file_id = chunk->GetValue(3, 0).GetValue<idx_t>();
 	idx_t main_schema_id = new_catalog_id + 1;
 	idx_t updated_next_catalog_id = new_catalog_id + 2;
-	idx_t new_snapshot_id = current_snapshot_id + 1;
+	idx_t new_snapshot_id = GetNextSnapshotId();
 
 	query = StringUtil::Format(
 	    "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot "
@@ -473,6 +517,15 @@ ORDER BY snapshot_id DESC LIMIT 1
 	result = transaction.Query(query);
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to create snapshot for catalog: ");
+	}
+
+	query = StringUtil::Format(
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_lineage "
+	    "(catalog_id, previous_snapshot_id, snapshot_id) VALUES (%llu, %llu, %llu)",
+	    new_catalog_id, previous_snapshot_id, new_snapshot_id);
+	result = transaction.Query(query);
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to record snapshot lineage for catalog: ");
 	}
 
 	query = StringUtil::Format(
@@ -583,18 +636,19 @@ static vector<DuckLakeMacroImplementation> LoadMacroImplementations(const Value 
 	return result;
 }
 
-idx_t DuckLakeMetadataManager::GetCatalogIdForSchema(idx_t schema_id) {
+idx_t DuckLakeMetadataManager::GetCatalogIdForSchema(idx_t schema_id, TableIndex table_id) {
 	string query = R"(
 SELECT begin_snapshot
 FROM {METADATA_CATALOG}.ducklake_inlined_data_tables
 INNER JOIN {METADATA_CATALOG}.ducklake_table ON (ducklake_table.catalog_id = ducklake_inlined_data_tables.catalog_id AND ducklake_table.table_id = ducklake_inlined_data_tables.table_id)
-WHERE schema_version = {SCHEMA_ID})";
+WHERE schema_version = {SCHEMA_ID} AND ducklake_inlined_data_tables.table_id = {TABLE_ID})";
 	query = StringUtil::Replace(query, "{SCHEMA_ID}", to_string(schema_id)).c_str();
+	query = StringUtil::Replace(query, "{TABLE_ID}", to_string(table_id.index)).c_str();
 	auto result = transaction.Query(query);
 	for (auto &row : *result) {
 		return row.GetValue<idx_t>(0);
 	}
-	throw InternalException("Schema Version %llu does not exist", schema_id);
+	throw InternalException("Schema Version %llu does not exist for table %llu", schema_id, table_id.index);
 }
 
 DuckLakeCatalogInfo DuckLakeMetadataManager::GetCatalogForSnapshot(DuckLakeSnapshot snapshot) {
@@ -2684,6 +2738,13 @@ string DuckLakeMetadataManager::InsertSnapshot() {
 	return R"(INSERT INTO {METADATA_CATALOG}.ducklake_snapshot (snapshot_id, snapshot_time, schema_version, next_catalog_id, next_file_id) VALUES ({SNAPSHOT_ID}, NOW(), {SCHEMA_VERSION}, {NEXT_CATALOG_ID}, {NEXT_FILE_ID});)";
 }
 
+string DuckLakeMetadataManager::InsertSnapshotLineage(idx_t previous_snapshot_id) {
+	return StringUtil::Format(
+	    "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_lineage (catalog_id, previous_snapshot_id, "
+	    "snapshot_id) VALUES ({CATALOG_ID}, %llu, {SNAPSHOT_ID});",
+	    previous_snapshot_id);
+}
+
 static string SQLStringOrNull(const string &str) {
 	if (str.empty()) {
 		return "NULL";
@@ -2748,7 +2809,13 @@ WHERE ducklake_table_stats.catalog_id = {CATALOG_ID} AND record_count IS NOT NUL
     AND file_size_bytes IS NOT NULL
 ORDER BY table_id NULLS FIRST;
 	)";
-	auto result = Query(start_snapshot, query);
+	unique_ptr<QueryResult> result;
+	if (UsesPostgresMetadata(transaction.GetCatalog())) {
+		result = Query(start_snapshot, query);
+	} else {
+		// Use a fresh metadata snapshot for conflict checks to avoid stale reads from the writer transaction.
+		result = transaction.QueryFresh(start_snapshot, query);
+	}
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to commit DuckLake transaction - failed to get snapshot and snapshot "
 		                               "changes for conflict resolution:");
@@ -2774,7 +2841,8 @@ ORDER BY table_id NULLS FIRST;
 
 SnapshotDeletedFromFiles
 DuckLakeMetadataManager::GetFilesDeletedOrDroppedAfterSnapshot(const DuckLakeSnapshot &start_snapshot) const {
-	auto result = transaction.Query(start_snapshot, R"(
+	unique_ptr<QueryResult> result;
+	string query = R"(
 	SELECT df.data_file_id
 	FROM {METADATA_CATALOG}.ducklake_delete_file df
 	JOIN {METADATA_CATALOG}.ducklake_table t ON df.catalog_id = t.catalog_id AND df.table_id = t.table_id
@@ -2784,7 +2852,13 @@ DuckLakeMetadataManager::GetFilesDeletedOrDroppedAfterSnapshot(const DuckLakeSna
 	FROM {METADATA_CATALOG}.ducklake_data_file df
 	JOIN {METADATA_CATALOG}.ducklake_table t ON df.catalog_id = t.catalog_id AND df.table_id = t.table_id
 	WHERE df.end_snapshot IS NOT NULL AND df.end_snapshot > {SNAPSHOT_ID} AND t.catalog_id = {CATALOG_ID}
-	)");
+	)";
+	if (UsesPostgresMetadata(transaction.GetCatalog())) {
+		result = transaction.Query(start_snapshot, query);
+	} else {
+		// Use a fresh metadata snapshot for conflict checks to avoid stale reads from the writer transaction.
+		result = transaction.QueryFresh(start_snapshot, query);
+	}
 	if (result->HasError()) {
 		result->GetErrorObject().Throw(
 		    "Failed to commit DuckLake transaction - failed to get files with deletions for conflict resolution:");
@@ -3070,7 +3144,6 @@ string DuckLakeMetadataManager::UpdateGlobalTableStats(const DuckLakeGlobalStats
 		                       contains_null, contains_nan, min_val, max_val, extra_stats_val);
 	}
 	string batch_query;
-
 	if (!stats.initialized) {
 		// stats have not been initialized yet - insert them
 		batch_query +=
@@ -3084,6 +3157,14 @@ string DuckLakeMetadataManager::UpdateGlobalTableStats(const DuckLakeGlobalStats
 		    "UPDATE {METADATA_CATALOG}.ducklake_table_stats SET record_count=%d, file_size_bytes=%d, "
 		    "next_row_id=%d WHERE catalog_id={CATALOG_ID} AND table_id=%d;",
 		    stats.record_count, stats.table_size_bytes, stats.next_row_id, stats.table_id.index);
+		// If the row is not visible in this metadata snapshot, this conditional insert will attempt
+		// to claim the key and trigger a conflict retry instead of silently dropping the update.
+		batch_query += StringUtil::Format(
+		    "INSERT INTO {METADATA_CATALOG}.ducklake_table_stats (catalog_id, table_id, record_count, next_row_id, "
+		    "file_size_bytes) "
+		    "SELECT {CATALOG_ID}, %d, %d, %d, %d WHERE NOT EXISTS (SELECT 1 FROM "
+		    "{METADATA_CATALOG}.ducklake_table_stats WHERE catalog_id={CATALOG_ID} AND table_id=%d);",
+		    stats.table_id.index, stats.record_count, stats.next_row_id, stats.table_size_bytes, stats.table_id.index);
 		batch_query += StringUtil::Format(R"(
 WITH new_values(cat_id, tid, cid, new_contains_null, new_contains_nan, new_min, new_max, new_extra_stats) AS (
 VALUES %s
