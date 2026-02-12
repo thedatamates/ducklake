@@ -2805,6 +2805,18 @@ bool DuckLakeMetadataManager::UseFreshMetadataReads() const {
 	return true;
 }
 
+idx_t DuckLakeMetadataManager::GetNextSnapshotId() {
+	auto result = transaction.Query("SELECT nextval('ducklake_snapshot_id_seq')");
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to allocate next snapshot ID: ");
+	}
+	auto chunk = result->Fetch();
+	if (!chunk || chunk->size() == 0 || chunk->ColumnCount() != 1) {
+		throw IOException("Failed to allocate next snapshot ID: sequence query returned no rows");
+	}
+	return chunk->GetValue(0, 0).GetValue<idx_t>();
+}
+
 unique_ptr<DuckLakeSnapshot> DuckLakeMetadataManager::GetSnapshot() {
 	auto result = transaction.Query(GetLatestSnapshotQuery());
 	if (result->HasError()) {
