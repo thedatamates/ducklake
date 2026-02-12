@@ -697,10 +697,9 @@ With global snapshots, the initial sequence shifted:
 
 | File | Purpose |
 |------|---------|
-| `src/storage/ducklake_metadata_manager.cpp` | Schema, queries, CreateCatalog |
+| `src/storage/ducklake_metadata_manager.cpp` | Schema and metadata query execution |
 | `src/storage/ducklake_transaction.cpp` | Placeholder replacement, FlushChanges |
-| `src/storage/ducklake_initializer.cpp` | Catalog lookup/creation on ATTACH |
-| `src/functions/ducklake_fork_catalog.cpp` | Fork function implementation |
+| `src/storage/ducklake_initializer.cpp` | Attach-time validation and catalog loading |
 | `src/functions/ducklake_expire_snapshots.cpp` | Per-catalog snapshot expiration |
 
 ### DuckLakeSnapshot Struct

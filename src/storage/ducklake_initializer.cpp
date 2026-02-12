@@ -61,7 +61,6 @@ void DuckLakeInitializer::Initialize() {
 	// explicitly load all secrets - work-around to secret initialization bug
 	transaction.Query("FROM duckdb_secrets()");
 
-	bool has_explicit_schema = !options.metadata_schema.empty();
 	if (options.metadata_schema.empty()) {
 		// if the schema is not explicitly set by the user - set it to the default schema in the catalog
 		options.metadata_schema = transaction.GetDefaultSchemaName();
@@ -78,15 +77,11 @@ void DuckLakeInitializer::Initialize() {
 	}
 	auto count = check_result->Fetch()->GetValue(0, 0).GetValue<idx_t>();
 	if (count == 0) {
-		if (!options.create_if_not_exists) {
-			throw InvalidInputException("Existing DuckLake at metadata catalog \"%s\" does not exist - and creating a "
-			                            "new DuckLake is explicitly disabled",
-			                            options.metadata_path);
-		}
-		InitializeNewDuckLake(transaction, has_explicit_schema);
-	} else {
-		LoadExistingDuckLake(transaction);
+		throw InvalidInputException("DuckLake metadata schema is not initialized at \"%s\". "
+		                            "Provision metadata with Crucible before attaching.",
+		                            options.metadata_path);
 	}
+	LoadExistingDuckLake(transaction);
 	if (options.at_clause) {
 		// if the user specified a snapshot try to load it to trigger an error if it does not exist
 		transaction.GetSnapshot();
@@ -113,33 +108,6 @@ void DuckLakeInitializer::InitializeDataPath() {
 		options.effective_data_path = data_path;
 	} else {
 		options.effective_data_path = data_path + options.catalog_name + separator;
-	}
-}
-
-void DuckLakeInitializer::InitializeNewDuckLake(DuckLakeTransaction &transaction, bool has_explicit_schema) {
-	if (options.data_path.empty()) {
-		auto &metadata_catalog = Catalog::GetCatalog(*transaction.GetConnection().context, options.metadata_database);
-		if (!metadata_catalog.IsDuckCatalog()) {
-			throw InvalidInputException(
-			    "Attempting to create a new ducklake instance but data_path is not set - set the "
-			    "DATA_PATH parameter to the desired location of the data files");
-		}
-		// for DuckDB instances - use a default data path
-		auto path = metadata_catalog.GetAttached().GetStorageManager().GetDBPath();
-		options.data_path = path + ".files";
-		InitializeDataPath();
-	}
-	auto &metadata_manager = transaction.GetMetadataManager();
-	metadata_manager.InitializeDuckLake(has_explicit_schema, catalog.Encryption());
-	if (catalog.Encryption() == DuckLakeEncryption::AUTOMATIC) {
-		// default to unencrypted
-		catalog.SetEncryption(DuckLakeEncryption::UNENCRYPTED);
-	}
-
-	if (options.create_if_not_exists) {
-		options.catalog_id = metadata_manager.CreateCatalog(options.catalog_name);
-	} else {
-		throw InvalidInputException("Catalog '%s' does not exist in this DuckLake instance", options.catalog_name);
 	}
 }
 
@@ -192,14 +160,33 @@ void DuckLakeInitializer::LoadExistingDuckLake(DuckLakeTransaction &transaction)
 		options.table_options[entry.table_id][entry.tag.key] = entry.tag.value;
 	}
 
-	// Lookup or create the catalog by name
-	auto catalog_id = metadata_manager.LookupCatalogByName(options.catalog_name);
-	if (catalog_id.IsValid()) {
-		options.catalog_id = catalog_id.GetIndex();
-	} else if (options.create_if_not_exists) {
-		options.catalog_id = metadata_manager.CreateCatalog(options.catalog_name);
-	} else {
-		throw InvalidInputException("Catalog '%s' does not exist in this DuckLake instance", options.catalog_name);
+	if (!options.has_catalog_id) {
+		throw InvalidInputException("CATALOG_ID is required. "
+		                            "Catalog lifecycle and lookup are owned by Crucible.");
+	}
+
+	auto query = StringUtil::Format(
+	    "SELECT catalog_name FROM {METADATA_CATALOG}.ducklake_catalog "
+	    "WHERE catalog_id = %llu AND end_snapshot IS NULL",
+	    options.catalog_id);
+	auto catalog_result = transaction.Query(query);
+	if (catalog_result->HasError()) {
+		catalog_result->GetErrorObject().Throw("Failed to resolve DuckLake catalog by CATALOG_ID: ");
+	}
+	auto chunk = catalog_result->Fetch();
+	if (!chunk || chunk->size() == 0) {
+		throw InvalidInputException("Catalog with CATALOG_ID %llu does not exist in this DuckLake instance",
+		                            options.catalog_id);
+	}
+	if (chunk->GetValue(0, 0).IsNull()) {
+		throw InvalidInputException("Catalog with CATALOG_ID %llu has no catalog_name", options.catalog_id);
+	}
+	auto resolved_catalog_name = chunk->GetValue(0, 0).GetValue<string>();
+	if (options.catalog_name.empty()) {
+		options.catalog_name = resolved_catalog_name;
+	}
+	if (!options.data_path.empty()) {
+		InitializeDataPath();
 	}
 }
 

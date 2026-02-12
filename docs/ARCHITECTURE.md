@@ -603,25 +603,6 @@ Parquet reader scans matching files
 | Function | Purpose |
 |----------|---------|
 | `ducklake_add_data_files(catalog, table, path)` | Register external parquet files |
-| `ducklake_fork_catalog(parent, new_name, [if_not_exists])` | Create catalog copy (see below) |
-
-**Fork Catalog Details:**
-
-`ducklake_fork_catalog(parent, new_name, if_not_exists := false)` creates a new catalog that shares data files with the parent but has independent metadata.
-
-Returns: `(catalog_id BIGINT, catalog_name VARCHAR, created BOOLEAN)`
-
-| Parameter | Description |
-|-----------|-------------|
-| `parent` | Attached catalog name to fork from |
-| `new_name` | Name for the new catalog |
-| `if_not_exists` | If true, return existing catalog instead of error (default: false) |
-
-**Behavior with `if_not_exists := true`:**
-- If catalog doesn't exist → creates new fork, `created=true`
-- If catalog exists and was forked from same parent → returns existing, `created=false`
-- If catalog exists but was forked from different parent → error
-- If catalog exists but is a root catalog (not a fork) → error
 
 ### Implementation Pattern
 

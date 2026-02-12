@@ -76,9 +76,6 @@ static void LoadInternal(ExtensionLoader &loader) {
 	DuckLakeLastCommittedSnapshotFunction last_committed;
 	loader.RegisterFunction(last_committed);
 
-	DuckLakeForkCatalogFunction fork_catalog;
-	loader.RegisterFunction(fork_catalog);
-
 	DuckLakeCatalogsFunction catalogs;
 	loader.RegisterFunction(catalogs);
 

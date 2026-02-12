@@ -291,41 +291,8 @@ SELECT * FROM table AT TIMESTAMP '2024-01-01';
 
 # Catalog Forking
 
-Fork a catalog to create an instant copy that **shares the underlying parquet files**. The fork gets its own metadata but reads from the same physical files as the parent.
-
-## Use Case
-
-- **AI Agents**: Each agent gets an isolated workspace forked from shared data
-- **Experimentation**: Branch a catalog to try changes without affecting the original
-- **Testing**: Create throwaway copies of production data
-
-## How It Works
-
-```sql
--- Parent catalog with 1TB of data
-ATTACH 'ducklake:postgres:...' AS parent (CATALOG 'shared_data', DATA_PATH '/data/');
-
--- Instant fork - no data copying!
-SELECT ducklake_fork_catalog('shared_data', 'agent_workspace');
-
--- Attach the fork with its own DATA_PATH for new writes
-ATTACH 'ducklake:postgres:...' AS workspace (CATALOG 'agent_workspace', DATA_PATH '/data/');
-
--- Fork can read all parent's data
-SELECT * FROM workspace.main.big_table;  -- Reads parent's parquet files
-
--- Fork's writes go to its own location
-INSERT INTO workspace.main.results VALUES (...);  -- Writes to /data/agent_workspace/
-```
-
-## Key Points
-
-- **Instant**: Fork copies metadata rows, not terabytes of parquet files
-- **Isolated**: Fork's writes don't affect parent; parent's writes don't affect fork
-- **Safe cleanup**: Deleting a fork doesn't delete shared files still used by parent
-- **Same IDs**: Fork's `data_file_id` values match parent's (same physical files)
-
-For technical details on how forking works (global snapshots, composite keys, etc.), see [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
+Catalog forking is a control-plane operation and is expected to be managed outside the DuckLake extension runtime.
+DuckLake attach is execution-only and consumes pre-existing metadata (for example via explicit `CATALOG_ID`).
 
 ---
 
@@ -490,7 +457,6 @@ These perform operations and are called via `CALL`:
 
 | Function | Description |
 |----------|-------------|
-| `ducklake_fork_catalog('parent', 'new_name')` | Create instant copy of a catalog (shares parquet files) |
 | `ducklake_expire_snapshots('catalog', ...)` | Remove old snapshots (keeps files until cleanup) |
 | `ducklake_merge_adjacent_files('catalog', 'table')` | Merge small parquet files into larger ones |
 | `ducklake_rewrite_data_files('catalog', 'table')` | Rewrite files to remove deleted rows |

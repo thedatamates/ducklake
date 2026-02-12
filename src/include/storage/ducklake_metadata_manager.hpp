@@ -109,15 +109,6 @@ public:
 	virtual void CreateDuckLakeSchema(DuckLakeEncryption encryption);
 	virtual DuckLakeMetadata LoadDuckLake();
 
-	//! Lookup catalog by name, returns catalog_id or invalid idx if not found
-	virtual optional_idx LookupCatalogByName(const string &catalog_name);
-	//! Allocate the next globally unique snapshot ID.
-	//! Local DuckLake metadata relies on the metadata search_path, so the default implementation
-	//! intentionally uses an unqualified sequence name.
-	virtual idx_t GetNextSnapshotId();
-	//! Create a new catalog entry, returns the new catalog_id
-	virtual idx_t CreateCatalog(const string &catalog_name);
-
 	virtual unique_ptr<QueryResult> Execute(DuckLakeSnapshot snapshot, string &query);
 
 	virtual unique_ptr<QueryResult> Query(DuckLakeSnapshot snapshot, string &query);
