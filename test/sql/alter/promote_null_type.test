@@ -10,8 +10,14 @@ test-env DUCKLAKE_CONNECTION {TEST_DIR}/ducklake_promote_null.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/ducklake_promote_null
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_promote_null', METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_promote_null', METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 statement ok
 USE ducklake
@@ -156,7 +162,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_promote_null', METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_promote_null', METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 query IIIIII
 SELECT id, n, v, l, s, m FROM ducklake.t ORDER BY id

@@ -10,8 +10,14 @@ test-env DUCKLAKE_CONNECTION {TEST_DIR}/ducklake_macro_null_default.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/macro_null_default
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/macro_null_default', METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/macro_null_default', METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 statement ok
 USE ducklake
@@ -22,12 +28,13 @@ CREATE MACRO with_default(a, b := NULL) AS COALESCE(b, a)
 statement ok
 CREATE MACRO rows_for(v := NULL) AS TABLE SELECT v AS v, v IS NULL AS missing
 
-query IIIIIII
+# Metadata rows are scoped by catalog_id.
+query IIIIIIII
 FROM ducklake_meta.ducklake_macro_parameters ORDER BY macro_id, column_id
 ----
-1	0	0	a	unknown	NULL	unknown
-1	0	1	b	unknown	NULL	null
-2	0	0	v	unknown	NULL	null
+0	1	0	0	a	unknown	NULL	unknown
+0	1	0	1	b	unknown	NULL	null
+0	2	0	0	v	unknown	NULL	null
 
 query II
 SELECT with_default(1), with_default(1, 2)
@@ -52,7 +59,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/macro_null_default', METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/macro_null_default', METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 query II
 SELECT ducklake.with_default(1), ducklake.with_default(1, 2)

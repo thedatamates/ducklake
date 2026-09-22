@@ -6,13 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/ducklake_parquet_row_group_size_bytes
+
+include test/fixtures/managed_catalog.sql
+
+endloop
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_parquet_row_group_size_bytes')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_parquet_row_group_size_bytes', CATALOG_ID 0);
 
 statement ok
 CALL ducklake.set_option('parquet_row_group_size_bytes', '10KB')

@@ -22,8 +22,14 @@ FROM read_parquet('/Users/holanda/Downloads/hits.parquet', binary_as_string=True
 statement ok
 DROP MACRO toDateTime;
 
+foreach fixture_path,fixture_schema,fixture_data_path ducklake_clickbench.db,main,/Users/holanda/Documents/Projects/ducklake/clickbench/
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:ducklake_clickbench.db' AS ducklake (DATA_PATH '/Users/holanda/Documents/Projects/ducklake/clickbench/')
+ATTACH 'ducklake:ducklake_clickbench.db' AS ducklake (DATA_PATH '/Users/holanda/Documents/Projects/ducklake/clickbench/', CATALOG_ID 0);
 
 statement ok
 COPY FROM DATABASE memory TO ducklake

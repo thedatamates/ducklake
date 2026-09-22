@@ -46,6 +46,7 @@ struct TransactionChangeInformation {
 };
 
 struct SnapshotChangeInformation {
+	optional_idx forked_from;
 	case_insensitive_set_t created_schemas;
 	set<SchemaIndex> dropped_schemas;
 	case_insensitive_map_t<case_insensitive_map_t<string>> created_tables;

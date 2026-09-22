@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/ducklake_inlining_alter_geo_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_inlining_alter_geo_files', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 10)
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_inlining_alter_geo_files', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 10, CATALOG_ID 0);
 
 statement ok
 USE ducklake;
@@ -29,7 +35,7 @@ SELECT * FROM t1
 2	world
 
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_1_1
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_0_1_1
 ----
 2
 
@@ -47,7 +53,7 @@ SELECT i, v, g FROM t1 ORDER BY i
 3	geo	NULL
 
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_1_1
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_0_1_1
 ----
 2
 
@@ -63,7 +69,7 @@ SELECT i, v, g FROM t1 ORDER BY i
 4	more_geo	NULL
 
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_1_1
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_0_1_1
 ----
 2
 
@@ -83,7 +89,7 @@ SELECT * FROM t1 ORDER BY i
 5	after_drop
 
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_1_3
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_0_1_3
 ----
 1
 
@@ -104,7 +110,7 @@ SELECT i, v, g FROM t1 ORDER BY i
 6	geo_again	NULL
 
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_1_3
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_0_1_3
 ----
 1
 
@@ -118,6 +124,6 @@ SELECT * FROM t2 ORDER BY i
 6	geo_again	NULL
 
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_1_3
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_0_1_3
 ----
 1

@@ -8,8 +8,14 @@ require parquet
 
 require json
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_json_alter_table.db,main,{TEST_DIR}/json_alter_table
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_json_alter_table.db' AS ducklake (DATA_PATH '{TEST_DIR}/json_alter_table')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_json_alter_table.db' AS ducklake (DATA_PATH '{TEST_DIR}/json_alter_table', CATALOG_ID 0);
 
 statement ok
 use ducklake;

@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/test_deletion_inlining_transaction
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_deletion_inlining_transaction',DATA_INLINING_ROW_LIMIT 10,  METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_deletion_inlining_transaction',DATA_INLINING_ROW_LIMIT 10,  METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 statement ok
 use ducklake
@@ -124,7 +130,7 @@ SELECT COUNT(*) FROM t;
 35
 
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 0	0	2
 0	1	2
@@ -160,7 +166,7 @@ ROLLBACK
 
 # After rollback, the inlined deletions should still be there (flush was rolled back)
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 0	0	2
 0	1	2
@@ -190,7 +196,7 @@ COMMIT
 
 # After flush + commit, the inlined deletions should be removed
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 
 # Data should still be correct after flush

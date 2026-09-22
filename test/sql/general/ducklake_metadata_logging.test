@@ -8,7 +8,7 @@ require parquet
 
 require-env DUCKLAKE_CI
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
@@ -16,8 +16,14 @@ test-env DATA_PATH {TEST_DIR}
 statement ok
 CALL enable_logging('DuckLakeMetadata')
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/ducklake_metadata_logging
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_metadata_logging')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_metadata_logging', CATALOG_ID 0);
 
 # create a table - this should generate metadata queries
 statement ok

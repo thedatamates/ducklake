@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_parquet_compression.db,main,{TEST_DIR}/ducklake_parquet_compression
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_parquet_compression.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_parquet_compression')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_parquet_compression.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_parquet_compression', CATALOG_ID 0);
 
 statement ok
 CALL ducklake.set_option('parquet_compression', 'zstd')
@@ -42,7 +48,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_parquet_compression.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_parquet_compression')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_parquet_compression.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_parquet_compression', CATALOG_ID 0);
 
 statement ok
 INSERT INTO ducklake.tbl VALUES (42, 'hello world');

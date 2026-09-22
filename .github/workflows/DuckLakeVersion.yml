@@ -1,4 +1,4 @@
-name: DuckLake Backwards Compatibility Tests
+name: Managed Catalog Contract Tests
 on: [push, pull_request,repository_dispatch]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
@@ -9,7 +9,7 @@ defaults:
 
 jobs:
   ducklake-version-tests:
-    name: DuckLake 1.0 Backwards Compatibility
+    name: Managed catalog provisioning and retention guards
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -58,8 +58,8 @@ jobs:
       run: |
         make release
 
-    - name: Test extension (ducklake_default_version=1.0)
+    - name: Test managed catalog contract
       env:
         DUCKDB_TPCH_ANSWERS_DIR: ${{ github.workspace }}/duckdb/extension/tpch/dbgen/answers
       run: |
-        build/release/test/unittest --test-config test/configs/ducklake_version.json
+        build/release/test/unittest --test-dir ./ --test-config test/configs/managed.json "test/sql/initialize/*,test/sql/multi_catalog/*"

@@ -40,7 +40,7 @@ Crucible disables the bundled engine feature of `agent-data-duck`. Set `DUCKDB_L
 ## Verification
 
 ```bash
-./build/release/test/unittest test/sql/multi_catalog/managed_catalogs.test
+./build/release/test/unittest --test-dir . --test-config test/configs/managed.json '~[.]test/sql/*'
 make format-fix
 ```
 
@@ -50,4 +50,4 @@ The formatter needs Black, clang-format 11 and cmake-format. An isolated invocat
 uv run --with 'black>=24' --with 'clang-format==11.0.1' --with cmake-format make format-fix
 ```
 
-The managed-catalog test passed 45 assertions. The matched build passed 65 Crucible integration tests, including PostgreSQL forks and mixed writers. The full upstream test suite is not adapted to Crucible-managed provisioning. Production packaging and the legacy Crucible Dockerfile have not been validated for this runtime.
+Run the shared PostgreSQL cases as described in [Testing](TESTING.md), which records the feature matrix and explicit lifecycle exclusions. The tests invoke DuckLake directly; Crucible integration tests are separate. Production packaging and the legacy Crucible Dockerfile have not been validated for this runtime.

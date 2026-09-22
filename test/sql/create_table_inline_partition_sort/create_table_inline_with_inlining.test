@@ -13,14 +13,20 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
 # DATA_INLINING_ROW_LIMIT is non-zero (the historic default-shaped CTAS path). Pick 1000 so we can write
 # both fully-inlined and overflow-to-Parquet cases below.
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/inline_with_inlining
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/inline_with_inlining', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 1000)
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/inline_with_inlining', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 1000, CATALOG_ID 0);
 
 statement ok
 USE ducklake

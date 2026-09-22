@@ -11,13 +11,18 @@ require icu
 statement ok
 SET TimeZone='UTC';
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/ducklake_add_files_type_timestamp
+
+include test/fixtures/managed_catalog.sql
+
+endloop
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake  (DATA_PATH '{DATA_PATH}/ducklake_add_files_type_timestamp')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake  (DATA_PATH '{DATA_PATH}/ducklake_add_files_type_timestamp', CATALOG_ID 0);
 
 statement ok
 COPY (SELECT DATE '2000-01-01' AS col1) TO '{DATA_PATH}/date.parquet';

@@ -1,0 +1,43 @@
+# name: test/sql/settings/inlining_with_views.test
+# description: Enabling inlining validates tables without casting views to table entries
+# group: [settings]
+
+require ducklake
+
+require parquet
+
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/metadata.db,main,{TEST_DIR}/data
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
+statement ok
+ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS lake (CATALOG_ID 0);
+CALL lake.set_option('data_inlining_row_limit', 0);
+CREATE TABLE lake.items AS SELECT 42 AS value;
+CREATE VIEW lake.selected AS SELECT * FROM items;
+CALL lake.set_option('data_inlining_row_limit', 100);
+CALL lake.set_option('data_inlining_row_limit', 100, schema='main');
+
+query I
+SELECT * FROM lake.selected;
+----
+42
+
+statement ok
+BEGIN;
+CREATE VIEW lake.pending AS SELECT * FROM items;
+CALL lake.set_option('data_inlining_row_limit', 200);
+COMMIT;
+CREATE TABLE lake.inlined AS SELECT 99 AS value;
+
+query I
+SELECT * FROM lake.pending;
+----
+42
+
+query I
+SELECT * FROM lake.inlined;
+----
+99

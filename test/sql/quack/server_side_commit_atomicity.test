@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/server_side_commit_atomicity
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/server_side_commit_atomicity')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/server_side_commit_atomicity', CATALOG_ID 0)
 
 statement ok
 CREATE TABLE ducklake.test(i INTEGER);
@@ -29,7 +35,7 @@ SELECT max(snapshot_id) FROM __ducklake_metadata_ducklake.ducklake_snapshot;
 # final ducklake_snapshot_changes insert. (A literal id is used because quack does not support
 # INSERT ... SELECT from the same catalog.)
 statement ok
-INSERT INTO __ducklake_metadata_ducklake.ducklake_snapshot_changes VALUES (3, 'orphan', NULL, NULL, NULL);
+INSERT INTO __ducklake_metadata_ducklake.ducklake_snapshot_changes VALUES (0, 3, 'orphan', NULL, NULL, NULL);
 
 # The commit fails on the colliding final statement.
 statement error

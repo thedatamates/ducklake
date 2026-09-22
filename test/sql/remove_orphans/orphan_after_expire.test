@@ -10,12 +10,23 @@ require icu
 
 require-env DUCKLAKE_CI
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/orphan_after_expire//
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS lake (DATA_PATH '{DATA_PATH}/orphan_after_expire//', METADATA_CATALOG 'ducklake_meta')
+ATTACH '{DUCKLAKE_CONNECTION}' AS fixture_metadata;
+UPDATE fixture_metadata.ducklake_schema SET path='test/main/' WHERE catalog_id=0;
+DETACH fixture_metadata;
+
+statement ok
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS lake (DATA_PATH '{DATA_PATH}/orphan_after_expire//', METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 statement ok
 USE lake

@@ -22,8 +22,9 @@ The metadata format is `1.1-dev1-catalog1`. The authoritative fresh schema and i
 - [Building and runtime compatibility](docs/BUILD.md)
 - [PostgreSQL setup](docs/POSTGRESQL.md)
 - [Snapshot allocation and concurrency](docs/SNAPSHOT_SEQUENCE.md)
+- [Test commands, feature coverage and exclusions](docs/TESTING.md)
 - [Rust feasibility research](docs/RUST_RESEARCH.md)
 
-The local validation passed 45 managed-catalog SQL assertions and 65 Crucible integration tests. The full upstream suite has not been adapted to external provisioning, and production packaging has not been validated.
+The analytical SQL suite uses explicitly provisioned catalog fixtures. Dedicated native and PostgreSQL tests cover catalog isolation, concurrent allocation, lineage, forks and retention. [Testing](docs/TESTING.md) records coverage and the explicit exclusions for unsupported upstream lifecycle behavior. Production packaging has not been validated.
 
 Snapshot expiration is disabled because upstream's implementation assumes exclusive ownership of the snapshot history. Files referenced by any catalog are protected during cleanup. Forks expose current data and retain schema history needed to decode it; ancestor data-history inheritance and native generic-file objects are separate planned work.

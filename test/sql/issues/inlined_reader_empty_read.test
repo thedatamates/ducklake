@@ -10,12 +10,18 @@ require postgres_scanner
 
 require-env DUCKLAKE_CI
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/inlined_empty_read
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS dl (DATA_PATH '{DATA_PATH}/inlined_empty_read', DATA_INLINING_ROW_LIMIT 10)
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS dl (DATA_PATH '{DATA_PATH}/inlined_empty_read', DATA_INLINING_ROW_LIMIT 10, CATALOG_ID 0);
 
 statement ok
 CREATE TABLE dl.t(i INTEGER, v VARCHAR)
@@ -31,7 +37,7 @@ SELECT i, v FROM dl.t ORDER BY i
 
 # force an errored inlined read by dropping the backing inlined-data table
 statement ok
-DROP TABLE __ducklake_metadata_dl.ducklake_inlined_data_1_1
+DROP TABLE __ducklake_metadata_dl.ducklake_inlined_data_0_1_1
 
 statement error
 SELECT i, v FROM dl.t ORDER BY i

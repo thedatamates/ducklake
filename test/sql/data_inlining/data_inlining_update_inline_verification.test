@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/ducklake_update_inline_verify_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_update_inline_verify_files', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 10)
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_update_inline_verify_files', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 10, CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.test AS SELECT i, 'val_' || i::VARCHAR AS j FROM range(20) t(i)
@@ -39,13 +45,13 @@ SELECT * FROM ducklake.test WHERE i=5
 
 # the inlined insert table should have the new row from the update
 query II
-SELECT i, j FROM ducklake_meta.ducklake_inlined_data_1_1
+SELECT i, j FROM ducklake_meta.ducklake_inlined_data_0_1_1
 ----
 5	updated
 
 # the inlined delete table should track the old row that was removed from the file
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_delete_1
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_delete_0_1
 ----
 1
 
@@ -69,14 +75,14 @@ true
 
 # inlined insert table now has 2 rows
 query II
-SELECT i, j FROM ducklake_meta.ducklake_inlined_data_1_1 ORDER BY i
+SELECT i, j FROM ducklake_meta.ducklake_inlined_data_0_1_1 ORDER BY i
 ----
 5	updated
 10	changed
 
 # inlined delete table now has 2 entries
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_delete_1
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_delete_0_1
 ----
 2
 

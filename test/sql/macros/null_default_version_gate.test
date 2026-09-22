@@ -8,8 +8,14 @@ require parquet
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_macro_null_gate.db,main,{DATA_PATH}/ducklake_macro_null_gate
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_macro_null_gate.db' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_macro_null_gate', METADATA_CATALOG 'ducklake_macro_gate_meta', DUCKLAKE_VERSION '1.0')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_macro_null_gate.db' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_macro_null_gate', METADATA_CATALOG 'ducklake_macro_gate_meta', DUCKLAKE_VERSION '1.0', CATALOG_ID 0);
 
 statement ok
 USE ducklake
@@ -47,7 +53,7 @@ DETACH ducklake
 
 # migrating the catalog unlocks NULL defaults
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_macro_null_gate.db' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_macro_null_gate', METADATA_CATALOG 'ducklake_macro_gate_meta', AUTOMATIC_MIGRATION TRUE)
+ATTACH 'ducklake:{TEST_DIR}/ducklake_macro_null_gate.db' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_macro_null_gate', METADATA_CATALOG 'ducklake_macro_gate_meta', AUTOMATIC_MIGRATION TRUE, CATALOG_ID 0);
 
 statement ok
 USE ducklake

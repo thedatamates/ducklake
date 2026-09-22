@@ -1,0 +1,181 @@
+# name: test/sql/multi_catalog/catalog_isolation.test
+# description: Shared PostgreSQL metadata isolates every catalog's SQL objects and data
+# group: [multi_catalog]
+
+require ducklake
+
+require parquet
+
+require postgres_scanner
+
+require-env DUCKLAKE_TEST_POSTGRES
+
+foreach fixture_schema,fixture_data_path isolation,{TEST_DIR}/shared
+
+include test/fixtures/managed_catalog_postgres.sql
+
+endloop
+
+statement ok
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS tenant_a (CATALOG_ID 0, METADATA_SCHEMA 'isolation', DATA_PATH '{TEST_DIR}/shared');
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS tenant_b (CATALOG_ID 1, METADATA_SCHEMA 'isolation', DATA_PATH '{TEST_DIR}/shared');
+USE tenant_a;
+CREATE TABLE users (id INTEGER, name VARCHAR);
+INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');
+
+query IT
+SELECT * FROM tenant_a.users ORDER BY id;
+----
+1	Alice
+2	Bob
+
+statement error
+SELECT * FROM tenant_b.users;
+----
+users
+
+statement ok
+CREATE TABLE tenant_b.users (id INTEGER, name VARCHAR);
+INSERT INTO tenant_b.users VALUES (100, 'Xavier'), (200, 'Yuki'), (300, 'Zara');
+
+query IT
+SELECT * FROM tenant_b.users ORDER BY id;
+----
+100	Xavier
+200	Yuki
+300	Zara
+
+query IT
+SELECT * FROM tenant_a.users ORDER BY id;
+----
+1	Alice
+2	Bob
+
+query I
+SELECT COUNT(*) FROM tenant_a.users;
+----
+2
+
+query I
+SELECT COUNT(*) FROM duckdb_databases() WHERE database_name IN ('tenant_a', 'tenant_b') AND type='ducklake';
+----
+2
+
+statement ok
+CREATE VIEW tenant_a.selected AS SELECT * FROM users WHERE id=1;
+CREATE VIEW tenant_b.selected AS SELECT * FROM users WHERE id=200;
+CREATE MACRO tenant_a.adjust(x) AS x + 10;
+CREATE MACRO tenant_b.adjust(x) AS x + 1000;
+CREATE SCHEMA tenant_a.analysis;
+CREATE SCHEMA tenant_b.analysis;
+ATTACH '{DUCKLAKE_TEST_POSTGRES}' AS inspect (TYPE postgres);
+CREATE TABLE tenant_a.analysis.measure AS SELECT 7 AS value;
+CREATE TABLE tenant_b.analysis.measure AS SELECT 77 AS value;
+COMMENT ON TABLE tenant_a.users IS 'first catalog';
+COMMENT ON TABLE tenant_b.users IS 'second catalog';
+
+query IT
+SELECT * FROM tenant_a.selected;
+----
+1	Alice
+
+query IT
+SELECT * FROM tenant_b.selected;
+----
+200	Yuki
+
+query II
+SELECT tenant_a.adjust(1), tenant_b.adjust(1);
+----
+11	1001
+
+query II
+SELECT a.value, b.value FROM tenant_a.analysis.measure a CROSS JOIN tenant_b.analysis.measure b;
+----
+7	77
+
+query IT
+SELECT catalog_id, value FROM inspect.isolation.ducklake_tag ORDER BY catalog_id;
+----
+0	first catalog
+1	second catalog
+
+# Settings must not leak between catalogs or into global format metadata.
+statement ok
+CALL tenant_a.set_option('data_inlining_row_limit', 0);
+CALL tenant_b.set_option('data_inlining_row_limit', 100);
+CREATE TABLE tenant_a.new_data AS SELECT 10 AS value;
+CREATE TABLE tenant_b.new_data AS SELECT 20 AS value;
+
+query IT
+SELECT catalog_id, value FROM inspect.isolation.ducklake_metadata WHERE key='data_inlining_row_limit' ORDER BY catalog_id;
+----
+0	0
+1	100
+
+query I
+SELECT count(*) FROM inspect.isolation.ducklake_metadata WHERE key='version' AND catalog_id IS NULL AND value='1.1-dev1-catalog1';
+----
+1
+
+# Exercise statistics, column evolution and writes while the other catalog stays mounted.
+statement ok
+ALTER TABLE tenant_a.users ADD COLUMN active BOOLEAN DEFAULT true;
+UPDATE tenant_a.users SET name='Alicia' WHERE id=1;
+DELETE FROM tenant_a.users WHERE id=2;
+CALL ducklake_flush_inlined_data('tenant_a');
+
+query ITI
+SELECT * FROM tenant_a.users;
+----
+1	Alicia	true
+
+query III
+SELECT min(id), max(id), count(*) FROM tenant_b.users;
+----
+100	300	3
+
+statement ok
+DROP VIEW tenant_a.selected;
+DROP MACRO tenant_a.adjust;
+DROP TABLE tenant_a.analysis.measure;
+DROP SCHEMA tenant_a.analysis;
+USE memory;
+DETACH tenant_a;
+DETACH tenant_b;
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS tenant_b (CATALOG_ID 1, METADATA_SCHEMA 'isolation', DATA_PATH '{TEST_DIR}/shared');
+
+query IT
+SELECT * FROM tenant_b.selected;
+----
+200	Yuki
+
+query II
+SELECT tenant_b.adjust(1), (SELECT value FROM tenant_b.analysis.measure);
+----
+1001	77
+
+query IT
+SELECT * FROM tenant_b.users ORDER BY id;
+----
+100	Xavier
+200	Yuki
+300	Zara
+
+statement ok
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS tenant_a (CATALOG_ID 0, METADATA_SCHEMA 'isolation', DATA_PATH '{TEST_DIR}/shared');
+
+query ITI
+SELECT * FROM tenant_a.users;
+----
+1	Alicia	true
+
+statement error
+SELECT * FROM tenant_a.selected;
+----
+selected
+
+statement error
+SELECT tenant_a.adjust(1);
+----
+adjust

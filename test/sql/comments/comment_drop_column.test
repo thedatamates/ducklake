@@ -4,15 +4,21 @@
 
 require ducklake
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
+
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/ducklake_comment_drop_column
+
+include test/fixtures/managed_catalog.sql
+
+endloop
 
 statement ok
 ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (
     DATA_PATH '{DATA_PATH}/ducklake_comment_drop_column',
     METADATA_CATALOG 'metadata'
-)
+, CATALOG_ID 0)
 
 # A tag committed before the column is dropped must be closed with the column.
 statement ok

@@ -8,11 +8,17 @@ require parquet
 
 # non-existent
 statement error
-ATTACH 'ducklake:{TEST_DIR}/ducklake_read_only.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_read_only_files', READ_ONLY)
+ATTACH 'ducklake:{TEST_DIR}/ducklake_read_only.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_read_only_files', READ_ONLY, CATALOG_ID 0);
 ----
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_read_only.db,main,{TEST_DIR}/ducklake_read_only_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_read_only.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_read_only_files')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_read_only.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_read_only_files', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.tbl(i INTEGER)
@@ -21,7 +27,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_read_only.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_read_only_files', READ_ONLY)
+ATTACH 'ducklake:{TEST_DIR}/ducklake_read_only.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_read_only_files', READ_ONLY, CATALOG_ID 0);
 
 query I
 FROM ducklake.tbl

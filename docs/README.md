@@ -44,8 +44,8 @@ Crucible links `build/release/src/libduckdb` and loads the extensions under `bui
 ## Verification
 
 ```bash
-./build/release/test/unittest test/sql/multi_catalog/managed_catalogs.test
+./build/release/test/unittest --test-dir . --test-config test/configs/managed.json '~[.]test/sql/*'
 make format-fix
 ```
 
-The managed-catalog regression provisions Crucible's fresh schema explicitly. Upstream tests that assume automatic metadata creation have not all been adapted to this lifecycle. Crucible's integration suite additionally covers shared PostgreSQL catalogs, forks, cleanup and analytical tools; use its documented isolated test-database configuration and the matched runtime library.
+The analytical suite provisions metadata explicitly. [Testing](TESTING.md) documents the direct PostgreSQL fork and isolation tests, feature coverage, restored historical regressions and unsupported upstream lifecycle exclusions. Crucible's integration suite remains separate.

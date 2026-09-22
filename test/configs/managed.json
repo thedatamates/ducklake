@@ -1,0 +1,57 @@
+{
+  "description": "Externally provisioned multi-catalog DuckLake. Exclusions retain upstream-only lifecycle tests; see docs/TESTING.md.",
+  "skip_tests": [
+    {
+      "reason": "Upstream automatic migration and old-format creation are disabled; initialize/ducklake_create_new.test verifies rejection without metadata mutation.",
+      "paths": [
+        "test/sql/attach/attach_ducklake_version.test",
+        "test/sql/comments/comment_on_view_column_v10.test",
+        "test/sql/macros/null_default_version_gate.test",
+        "test/sql/migration/dev1_plain_attach_migration.test",
+        "test/sql/migration/inlined_column_rename.test",
+        "test/sql/migration/inlined_column_rename_conflict.test",
+        "test/sql/migration/inlined_column_rename_dev_conflict.test",
+        "test/sql/migration/inlined_column_rename_dev_missing_table.test",
+        "test/sql/migration/inlined_column_rename_hint.test",
+        "test/sql/migration/inlined_column_rename_missing_table.test",
+        "test/sql/migration/inlined_column_rename_partial.test",
+        "test/sql/migration/inlined_column_rename_remigrate.test",
+        "test/sql/migration/inlined_column_rename_reverse_hint.test",
+        "test/sql/migration/inlined_column_rename_stats_hint.test",
+        "test/sql/migration/inlining_reserved_column_names_v10.test",
+        "test/sql/migration/migration.test",
+        "test/sql/migration/per_table_schema.test",
+        "test/sql/migration/test_compaction.test",
+        "test/sql/migration/v01_partitioned.test",
+        "test/sql/migration/v10_row_group_count.test",
+        "test/sql/migration/v11_stats_exactness.test",
+        "test/sql/partitioning/epoch_version_gate.test",
+        "test/sql/types/null_type_version_gate.test"
+      ]
+    },
+    {
+      "reason": "Snapshot expiration is disabled to protect shared history; multi_catalog/retention_guards.test and fork_storage.test verify retention and cleanup.",
+      "paths": [
+        "test/sql/alter/expire_snapshot_bug.test",
+        "test/sql/checkpoint/checkpoint_ducklake.test",
+        "test/sql/cleanup/cleanup_old_files.test",
+        "test/sql/compaction/cleanup_old_files_global_option.test",
+        "test/sql/compaction/compaction_cleanup_global.test",
+        "test/sql/compaction/expire_snapshots.test",
+        "test/sql/compaction/expire_snapshots_drop_macro.test",
+        "test/sql/compaction/expire_snapshots_drop_table.test",
+        "test/sql/compaction/expire_snapshots_metadata_cleanup.test",
+        "test/sql/compaction/merge_adjacent_file_size_filter.test",
+        "test/sql/compaction/merge_adjacent_max_files.test",
+        "test/sql/compaction/merge_files_expired_snapshots.test",
+        "test/sql/data_inlining/empty_inlined_tables_alter_cleanup.test",
+        "test/sql/data_inlining/inlined_data_table_leak.test",
+        "test/sql/data_inlining/inlined_dead_rows_expire.test",
+        "test/sql/data_inlining/inlined_delete_table_drop_cleanup.test",
+        "test/sql/issues/issue_852_cache_growth.test",
+        "test/sql/rewrite_data_files/test_rewrite_after_partition_evolution.test",
+        "test/sql/sorted_table/merge_adjacent_sorted_basic.test"
+      ]
+    }
+  ]
+}

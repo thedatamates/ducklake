@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/some.db,main,{TEST_DIR}/some/
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/some.db' AS a_ducklake (DATA_PATH '{TEST_DIR}/some/');
+ATTACH 'ducklake:{TEST_DIR}/some.db' AS a_ducklake (DATA_PATH '{TEST_DIR}/some/', CATALOG_ID 0);
 
 statement ok
 USE a_ducklake;
@@ -25,12 +31,12 @@ statement ok
 DETACH a_ducklake;
 
 statement error
-ATTACH 'ducklake:{TEST_DIR}/some.db' AS other_ducklake (DATA_PATH '{TEST_DIR}/other_path/');
+ATTACH 'ducklake:{TEST_DIR}/some.db' AS other_ducklake (DATA_PATH '{TEST_DIR}/other_path/', CATALOG_ID 0);
 ----
 does not match existing data path in the catalog
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/some.db' AS other_ducklake (DATA_PATH '{TEST_DIR}/other_path/', OVERRIDE_DATA_PATH TRUE);
+ATTACH 'ducklake:{TEST_DIR}/some.db' AS other_ducklake (DATA_PATH '{TEST_DIR}/other_path/', OVERRIDE_DATA_PATH TRUE, CATALOG_ID 0);
 
 # This will obviously not work, different OSs have different error messages saying file not found
 statement error

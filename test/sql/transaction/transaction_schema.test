@@ -7,13 +7,18 @@ require ducklake
 require parquet
 
 # store multiple DuckLake catalogs in the same metadata store (with different schemas)
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},metadata_s1,{DATA_PATH}/ducklake_files_s1
+
+include test/fixtures/managed_catalog.sql
+
+endloop
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake_1 (DATA_PATH '{DATA_PATH}/ducklake_files_s1', METADATA_SCHEMA 'metadata_s1')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake_1 (DATA_PATH '{DATA_PATH}/ducklake_files_s1', METADATA_SCHEMA 'metadata_s1', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake_1.tbl(i INTEGER);
@@ -24,8 +29,14 @@ INSERT INTO ducklake_1.tbl VALUES (42);
 statement ok
 DETACH ducklake_1
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},metadata_s2,{DATA_PATH}/ducklake_files_s2
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake_2 (DATA_PATH '{DATA_PATH}/ducklake_files_s2', METADATA_SCHEMA 'metadata_s2')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake_2 (DATA_PATH '{DATA_PATH}/ducklake_files_s2', METADATA_SCHEMA 'metadata_s2', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake_2.tbl(s VARCHAR);

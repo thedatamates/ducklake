@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/test_simple_macro
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_simple_macro');
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_simple_macro', CATALOG_ID 0);
 
 statement ok
 use ducklake
@@ -25,20 +31,23 @@ select simple(1)
 1
 
 # # Check Macro Tables
-query IIIII
+# Metadata rows are scoped by catalog_id.
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	simple	1	NULL
+0	0	1	simple	1	NULL
 
-query IIIII
+# Metadata rows are scoped by catalog_id.
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-1	0	duckdb	a	scalar
+0	1	0	duckdb	a	scalar
 
-query IIIIIII
+# Metadata rows are scoped by catalog_id.
+query IIIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-1	0	0	a	unknown	NULL	unknown
+0	1	0	0	a	unknown	NULL	unknown
 
 statement ok
 drop macro simple;
@@ -72,11 +81,12 @@ select simple(1)
 1
 
 # It now gets a new id
-query IIIII
+# Metadata rows are scoped by catalog_id.
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	simple	1	2
-0	2	simple	3	NULL
+0	0	1	simple	1	2
+0	0	2	simple	3	NULL
 
 query II
 select snapshot_id, changes FROM snapshots()

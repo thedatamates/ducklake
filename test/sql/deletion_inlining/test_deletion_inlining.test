@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/test_deletion_inlining
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_deletion_inlining',DATA_INLINING_ROW_LIMIT 10,  METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_deletion_inlining',DATA_INLINING_ROW_LIMIT 10,  METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 statement ok
 use ducklake
@@ -29,7 +35,7 @@ SELECT table_id, begin_snapshot, end_snapshot, delete_count FROM ducklake_meta.d
 
 # Verify the first inlined deletion (5 rows: 0-4)
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 0	0	2
 0	1	2
@@ -51,7 +57,7 @@ SELECT COUNT(*) FROM t
 41
 
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 0	0	2
 0	1	2
@@ -72,7 +78,7 @@ SELECT COUNT(*) FROM t
 40
 
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 0	0	2
 0	1	2
@@ -90,7 +96,7 @@ statement ok
 CALL ducklake_flush_inlined_data('ducklake')
 
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 
 query I
@@ -113,7 +119,7 @@ DELETE FROM T where a > 45
 
 # New deletions should be inlined (6 from a<15 + 4 from a>45 = 10 rows)
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 0	9	6
 0	10	6
@@ -152,7 +158,7 @@ SELECT COUNT(*) FROM t
 
 # After flush, active inlined deletions should be empty
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 
 # Now let's do an insert that is fully inlined
@@ -179,7 +185,7 @@ SELECT COUNT(*) FROM T
 
 # Only check active (non-flushed) deletions
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 4	10	11
 4	11	11
@@ -189,7 +195,7 @@ SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delet
 0	40	11
 
 query IIII
-FROM ducklake_meta.ducklake_inlined_data_1_1 order by ALL
+FROM ducklake_meta.ducklake_inlined_data_0_1_1 order by ALL
 ----
 50	9	NULL	51
 51	9	NULL	52

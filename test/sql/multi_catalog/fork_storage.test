@@ -1,0 +1,250 @@
+# name: test/sql/multi_catalog/fork_storage.test
+# description: Forked catalogs share immutable files and isolate mutations and cleanup
+# group: [multi_catalog]
+
+require ducklake
+
+require parquet
+
+require postgres_scanner
+
+require-env DUCKLAKE_TEST_POSTGRES
+
+foreach fixture_schema,fixture_data_path fork_storage,{TEST_DIR}/shared
+
+include test/fixtures/managed_catalog_postgres.sql
+
+statement ok
+ATTACH '{DUCKLAKE_TEST_POSTGRES}' AS inspect (TYPE postgres);
+UPDATE inspect.fork_storage.ducklake_schema SET path='test/main/' WHERE catalog_id=0;
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS parent (CATALOG_ID 0, METADATA_SCHEMA 'fork_storage', DATA_INLINING_ROW_LIMIT 0);
+CREATE TABLE parent.items AS SELECT i AS id, 'original' AS label FROM range(10) t(i);
+ALTER TABLE parent.items SET PARTITIONED BY (label);
+ALTER TABLE parent.items SET SORTED BY (id);
+DELETE FROM parent.items WHERE id=0;
+CREATE VIEW parent.selected AS SELECT id FROM items WHERE id>7;
+CREATE MACRO parent.plus_one(x) AS x+1;
+COMMENT ON TABLE parent.items IS 'shared origin';
+SET VARIABLE parent_snapshot = (SELECT max(snapshot_id) FROM ducklake_snapshots('parent'));
+SET VARIABLE shared_file = (SELECT data_file FROM ducklake_list_files('parent', 'items') LIMIT 1);
+
+include test/fixtures/fork_catalog.sql
+
+endloop
+
+statement ok
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS child (CATALOG_ID 1, METADATA_SCHEMA 'fork_storage', DATA_INLINING_ROW_LIMIT 0);
+
+query II
+SELECT count(*), sum(id) FROM child.items;
+----
+9	45
+
+query I
+SELECT * FROM child.selected ORDER BY id;
+----
+8
+9
+
+query I
+SELECT child.plus_one(41);
+----
+42
+
+# A fork reuses table/file IDs and actual paths; it is not a physical data copy.
+query III
+SELECT a.table_id=b.table_id, a.data_file_id=b.data_file_id, a.path=b.path FROM inspect.fork_storage.ducklake_data_file a JOIN inspect.fork_storage.ducklake_data_file b ON a.data_file_id=b.data_file_id WHERE a.catalog_id=0 AND b.catalog_id=1;
+----
+true	true	true
+
+statement error
+SELECT * FROM child.items AT (VERSION => 1);
+----
+snapshot
+
+query I
+SELECT min(snapshot_id)=getvariable('fork_snapshot') FROM ducklake_snapshots('child');
+----
+true
+
+query T
+SELECT changes['forked_from'] FROM ducklake_snapshots('child') WHERE snapshot_id=getvariable('fork_snapshot');
+----
+[0]
+
+# Both sides can evolve independently despite overlapping IDs and shared files.
+statement ok
+UPDATE child.items SET label='child' WHERE id=1;
+DELETE FROM child.items WHERE id=2;
+ALTER TABLE child.items ADD COLUMN extra INTEGER DEFAULT 7;
+INSERT INTO parent.items VALUES (10, 'parent');
+
+query III
+SELECT count(*), sum(id), min(extra) FROM child.items;
+----
+8	43	7
+
+query II
+SELECT count(*), sum(id) FROM parent.items;
+----
+10	55
+
+query T
+SELECT label FROM parent.items WHERE id=1;
+----
+original
+
+statement ok
+USE memory;
+DETACH child;
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS child (CATALOG_ID 1, METADATA_SCHEMA 'fork_storage');
+
+query TI
+SELECT label, extra FROM child.items WHERE id=1;
+----
+child	7
+
+# Queuing a shared file cannot remove another catalog's current or historical data.
+statement ok
+SET VARIABLE shared_delete = (SELECT delete_file FROM ducklake_list_files('child', 'items') WHERE delete_file IS NOT NULL LIMIT 1);
+SET VARIABLE shared_delete_id = (SELECT delete_file_id FROM inspect.fork_storage.ducklake_delete_file WHERE catalog_id=1 AND end_snapshot IS NULL LIMIT 1);
+INSERT INTO inspect.fork_storage.ducklake_files_scheduled_for_deletion SELECT 0, data_file_id, 'test/main/items/' || path, true, now() FROM inspect.fork_storage.ducklake_data_file WHERE catalog_id=0 AND data_file_id=1;
+INSERT INTO inspect.fork_storage.ducklake_files_scheduled_for_deletion SELECT 0, delete_file_id, 'test/main/items/' || path, true, now() FROM inspect.fork_storage.ducklake_delete_file WHERE catalog_id=1 AND delete_file_id=getvariable('shared_delete_id');
+DELETE FROM inspect.fork_storage.ducklake_data_file WHERE catalog_id=0 AND data_file_id=1;
+
+query I
+SELECT count(*) FROM ducklake_cleanup_old_files('parent', cleanup_all=>true, dry_run=>true);
+----
+0
+
+statement ok
+CALL ducklake_cleanup_old_files('parent', cleanup_all=>true);
+
+query I
+SELECT count(*) FROM child.items;
+----
+8
+
+statement ok
+COPY (SELECT 999 AS id) TO '{TEST_DIR}/shared/test/orphan.parquet';
+
+query IT
+SELECT count(*), min(regexp_extract(path, '[^/]+$')) FROM ducklake_delete_orphaned_files('parent', cleanup_all=>true, dry_run=>true);
+----
+1	orphan.parquet
+
+statement ok
+CALL ducklake_delete_orphaned_files('parent', cleanup_all=>true);
+
+query I
+SELECT count(*) FROM child.items;
+----
+8
+
+# A historical reference still protects the file after the child's table is dropped.
+statement ok
+DROP VIEW child.selected;
+DROP TABLE child.items;
+
+query I
+SELECT count(*) FROM ducklake_cleanup_old_files('parent', cleanup_all=>true, dry_run=>true);
+----
+0
+
+# Fail closed if the metadata used to discover references is unavailable.
+statement ok
+ALTER TABLE inspect.fork_storage.ducklake_delete_file RENAME TO unavailable_delete_file;
+
+statement error
+CALL ducklake_cleanup_old_files('parent', cleanup_all=>true);
+----
+Failed to get files scheduled for deletion
+
+statement error
+CALL ducklake_delete_orphaned_files('parent', cleanup_all=>true);
+----
+Failed to get files scheduled for deletion
+
+statement ok
+ALTER TABLE inspect.fork_storage.unavailable_delete_file RENAME TO ducklake_delete_file;
+
+query II
+SELECT (SELECT count(*) FROM glob(getvariable('shared_file'))), (SELECT count(*) FROM glob(getvariable('shared_delete')));
+----
+1	1
+
+query I
+SELECT count(*) FROM inspect.fork_storage.ducklake_files_scheduled_for_deletion WHERE data_file_id=1;
+----
+1
+
+# Only external removal of every reference makes the queued file eligible.
+statement ok
+CREATE TABLE child.imported(id BIGINT, label VARCHAR);
+CALL ducklake_add_data_files('child', 'imported', getvariable('shared_file'));
+DELETE FROM inspect.fork_storage.ducklake_data_file WHERE data_file_id=1;
+
+# Orphan detection must also recognize the imported absolute path without a queue entry.
+statement ok
+CREATE TABLE saved_schedule AS SELECT * FROM inspect.fork_storage.ducklake_files_scheduled_for_deletion WHERE catalog_id=0 AND data_file_id=1;
+DELETE FROM inspect.fork_storage.ducklake_files_scheduled_for_deletion WHERE catalog_id=0 AND data_file_id=1;
+
+query I
+SELECT count(*) FROM ducklake_delete_orphaned_files('parent', cleanup_all=>true, dry_run=>true);
+----
+0
+
+statement ok
+CALL ducklake_delete_orphaned_files('parent', cleanup_all=>true);
+
+query I
+SELECT count(*) FROM child.imported;
+----
+10
+
+statement ok
+INSERT INTO inspect.fork_storage.ducklake_files_scheduled_for_deletion SELECT * FROM saved_schedule;
+
+query I
+SELECT count(*) FROM ducklake_cleanup_old_files('parent', cleanup_all=>true, dry_run=>true);
+----
+0
+
+statement ok
+DROP TABLE child.imported;
+
+# Re-importing a shared path allocates a different file ID. Its history still owns the bytes.
+query I
+SELECT count(*) FROM ducklake_cleanup_old_files('parent', cleanup_all=>true, dry_run=>true);
+----
+0
+
+statement ok
+DELETE FROM inspect.fork_storage.ducklake_data_file WHERE catalog_id=1 AND table_id IN (SELECT table_id FROM inspect.fork_storage.ducklake_table WHERE catalog_id=1 AND table_name='imported');
+
+query I
+SELECT count(*) FROM ducklake_cleanup_old_files('parent', cleanup_all=>true, dry_run=>true);
+----
+1
+
+statement ok
+CALL ducklake_cleanup_old_files('parent', cleanup_all=>true);
+
+query I
+SELECT count(*) FROM inspect.fork_storage.ducklake_files_scheduled_for_deletion WHERE data_file_id=1;
+----
+0
+
+query II
+SELECT (SELECT count(*) FROM glob(getvariable('shared_file'))), (SELECT count(*) FROM glob(getvariable('shared_delete')));
+----
+0	1
+
+statement ok
+DELETE FROM inspect.fork_storage.ducklake_delete_file WHERE delete_file_id=getvariable('shared_delete_id');
+CALL ducklake_cleanup_old_files('parent', cleanup_all=>true);
+
+query I
+SELECT count(*) FROM glob(getvariable('shared_delete'));
+----
+0

@@ -73,4 +73,4 @@ jobs:
       env:
         DUCKDB_TPCH_ANSWERS_DIR: ${{ github.workspace }}/duckdb/extension/tpch/dbgen/answers
       run: |
-        build/debug/test/unittest
+        build/debug/test/unittest --test-dir ./ --test-config test/configs/managed.json "~[.]test/sql/*"

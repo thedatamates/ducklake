@@ -7,8 +7,14 @@ require ducklake
 require parquet
 
 # partitioning based on a column
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_partitioning.db,main,{TEST_DIR}/ducklake_partitioning
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_partitioning.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_partitioning', METADATA_CATALOG 'ducklake_metadata')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_partitioning.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_partitioning', METADATA_CATALOG 'ducklake_metadata', CATALOG_ID 0);
 
 statement ok
 USE ducklake
@@ -181,7 +187,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_partitioning.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_partitioning', METADATA_CATALOG 'ducklake_metadata2')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_partitioning.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_partitioning', METADATA_CATALOG 'ducklake_metadata2', CATALOG_ID 0);
 
 statement ok
 USE ducklake

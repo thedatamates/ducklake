@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/test_attach_timetravel.db,main,{TEST_DIR}/test_attach_timetravel
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/test_attach_timetravel.db' AS ducklake (DATA_PATH '{TEST_DIR}/test_attach_timetravel');
+ATTACH 'ducklake:{TEST_DIR}/test_attach_timetravel.db' AS ducklake (DATA_PATH '{TEST_DIR}/test_attach_timetravel', CATALOG_ID 0);
 
 statement ok
 use ducklake
@@ -37,7 +43,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/test_attach_timetravel.db' AS ducklake (DATA_PATH '{TEST_DIR}/test_attach_timetravel', SNAPSHOT_VERSION 1);
+ATTACH 'ducklake:{TEST_DIR}/test_attach_timetravel.db' AS ducklake (DATA_PATH '{TEST_DIR}/test_attach_timetravel', SNAPSHOT_VERSION 1, CATALOG_ID 0);
 
 statement ok
 use ducklake

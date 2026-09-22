@@ -13,16 +13,38 @@ statement ok
 DETACH db1;
 
 statement error
-ATTACH 'ducklake:{TEST_DIR}/read_only_mode.db' AS ducklake (READONLY 1, CREATE_IF_NOT_EXISTS false)
+ATTACH 'ducklake:{TEST_DIR}/read_only_mode.db' AS ducklake (CATALOG_ID 0, READONLY 1, CREATE_IF_NOT_EXISTS false)
 ----
-creating a new DuckLake is explicitly disabled
+metadata must be provisioned
 
 statement error
-ATTACH 'ducklake:{TEST_DIR}/read_only_mode.db' AS ducklake (READONLY 1)
+ATTACH 'ducklake:{TEST_DIR}/read_only_mode.db' AS ducklake (CATALOG_ID 0, READONLY 1)
 ----
-creating a new DuckLake is explicitly disabled
+metadata must be provisioned
 
 statement error
-ATTACH 'ducklake:{TEST_DIR}/read_only_mode.db' AS ducklake (READONLY 1, CREATE_IF_NOT_EXISTS true)
+ATTACH 'ducklake:{TEST_DIR}/read_only_mode.db' AS ducklake (CATALOG_ID 0, READONLY 1, CREATE_IF_NOT_EXISTS true)
 ----
-"CREATE" on database "__ducklake_metadata_ducklake" which is attached in read-only mode!
+metadata must be provisioned
+
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/provisioned.db,main,{TEST_DIR}/data
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
+statement ok
+ATTACH 'ducklake:{TEST_DIR}/provisioned.db' AS lake (CATALOG_ID 0);
+CREATE TABLE lake.items AS SELECT 42 AS id;
+DETACH lake;
+ATTACH 'ducklake:{TEST_DIR}/provisioned.db' AS lake (CATALOG_ID 0, READ_ONLY);
+
+query I
+SELECT * FROM lake.items;
+----
+42
+
+statement error
+INSERT INTO lake.items VALUES (43);
+----
+read-only

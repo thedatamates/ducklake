@@ -1,0 +1,48 @@
+# name: test/sql/multi_catalog/catalog_discovery.test
+# description: Catalog discovery reports stable identities and excludes retired catalogs
+# group: [multi_catalog]
+
+require ducklake
+
+require parquet
+
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/metadata.db,main,{TEST_DIR}/data
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
+statement ok
+ATTACH '{TEST_DIR}/metadata.db' AS inspect;
+INSERT INTO inspect.ducklake_catalog VALUES
+  (2, '00000000-0000-0000-0000-000000000003', 'fork', 0, 0, NULL),
+  (3, '00000000-0000-0000-0000-000000000004', 'retired', 0, 0, 0);
+DETACH inspect;
+ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS workbook (CATALOG_ID 0);
+
+query ITTI
+SELECT catalog_id, catalog_name, catalog_uuid::VARCHAR, parent_catalog_id FROM ducklake_catalogs('workbook') ORDER BY catalog_id;
+----
+0	test	00000000-0000-0000-0000-000000000001	NULL
+2	fork	00000000-0000-0000-0000-000000000003	0
+
+query III
+SELECT catalog_id, begin_snapshot, end_snapshot FROM ducklake_catalogs('workbook') ORDER BY catalog_id;
+----
+0	0	NULL
+2	0	NULL
+
+statement error
+SELECT * FROM ducklake_catalogs('missing');
+----
+missing
+
+statement ok
+DETACH workbook;
+ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS another_alias (CATALOG_ID 0, CATALOG 'test');
+
+query IT
+SELECT catalog_id, catalog_name FROM ducklake_catalogs('another_alias') ORDER BY catalog_id;
+----
+0	test
+2	fork

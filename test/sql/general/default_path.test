@@ -8,8 +8,14 @@ require parquet
 
 test-env DUCKLAKE_CONNECTION {TEST_DIR}/ducklake_default_paths.db
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DUCKLAKE_CONNECTION}.files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake(CATALOG_ID 0);
 
 # built-in paths
 statement ok

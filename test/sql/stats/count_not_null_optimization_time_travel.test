@@ -13,8 +13,14 @@ test-env DATA_PATH {TEST_DIR}
 statement ok
 SET profiling_renderer_settings = MAP {'operator_casing': 'upper'};
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/count_not_null_time_travel
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/count_not_null_time_travel', DATA_INLINING_ROW_LIMIT 0)
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/count_not_null_time_travel', DATA_INLINING_ROW_LIMIT 0, CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.history(i INTEGER);
@@ -68,7 +74,7 @@ statement ok
 DETACH ducklake;
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (SNAPSHOT_VERSION 2);
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (SNAPSHOT_VERSION 2, CATALOG_ID 0);
 
 # nor to a catalog pinned at that snapshot
 query II

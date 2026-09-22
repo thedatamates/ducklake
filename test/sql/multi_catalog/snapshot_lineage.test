@@ -1,0 +1,145 @@
+# name: test/sql/multi_catalog/snapshot_lineage.test
+# description: Shared snapshots record per-catalog predecessors and survive rollback and concurrent writes
+# group: [multi_catalog]
+
+require ducklake
+
+require parquet
+
+require postgres_scanner
+
+require-env DUCKLAKE_TEST_POSTGRES
+
+foreach fixture_schema,fixture_data_path lineage,{TEST_DIR}/shared
+
+include test/fixtures/managed_catalog_postgres.sql
+
+endloop
+
+statement ok
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS one (CATALOG_ID 0, METADATA_SCHEMA 'lineage');
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS two (CATALOG_ID 1, METADATA_SCHEMA 'lineage');
+ATTACH '{DUCKLAKE_TEST_POSTGRES}' AS inspect (TYPE postgres);
+CREATE TABLE one.items AS SELECT 1 AS id;
+CREATE TABLE two.items AS SELECT 100 AS id;
+INSERT INTO one.items VALUES (2);
+INSERT INTO two.items VALUES (200);
+
+# Interleaved global IDs do not become cross-catalog predecessor edges.
+query III
+SELECT catalog_id, previous_snapshot_id, snapshot_id FROM inspect.lineage.ducklake_snapshot_lineage ORDER BY snapshot_id;
+----
+0	0	1
+1	0	2
+0	1	3
+1	2	4
+
+query I
+SELECT snapshot_id FROM ducklake_snapshots('one') ORDER BY snapshot_id;
+----
+0
+1
+3
+
+query I
+SELECT snapshot_id FROM ducklake_snapshots('two') ORDER BY snapshot_id;
+----
+0
+2
+4
+
+statement ok
+BEGIN;
+INSERT INTO one.items VALUES (999);
+ROLLBACK;
+
+query I
+SELECT count(*) FROM one.items WHERE id=999;
+----
+0
+
+query I
+SELECT count(*) FROM inspect.lineage.ducklake_snapshot_lineage;
+----
+4
+
+# Both transactions start with the same global counters, on different catalogs.
+statement ok
+CALL one.set_option('data_inlining_row_limit', 0);
+CALL two.set_option('data_inlining_row_limit', 0);
+
+statement ok first
+BEGIN;
+
+statement ok second
+BEGIN;
+
+statement ok first
+CREATE TABLE one.first_writer AS SELECT 7 AS id;
+
+statement ok second
+CREATE TABLE two.second_writer AS SELECT 8 AS id;
+
+statement ok first
+COMMIT;
+
+statement ok second
+COMMIT;
+
+query II
+SELECT (SELECT id FROM one.first_writer), (SELECT id FROM two.second_writer);
+----
+7	8
+
+# Real simultaneous commits exercise the shared allocator and its retries.
+concurrentloop writer 0 12
+
+statement ok
+INSERT INTO one.items VALUES (10+{writer});
+
+statement ok
+INSERT INTO two.items VALUES (1000+{writer});
+
+endloop
+
+query II
+SELECT count(*), sum(id) FROM one.items;
+----
+14	189
+
+query II
+SELECT count(*), sum(id) FROM two.items;
+----
+14	12366
+
+query II
+SELECT count(*) = count(DISTINCT snapshot_id), count(*) = count(DISTINCT (catalog_id, previous_snapshot_id)) FROM inspect.lineage.ducklake_snapshot_lineage;
+----
+true	true
+
+# Every non-root predecessor belongs to the same catalog and precedes its child.
+query I
+SELECT count(*) FROM inspect.lineage.ducklake_snapshot_lineage child LEFT JOIN inspect.lineage.ducklake_snapshot_lineage parent ON parent.snapshot_id=child.previous_snapshot_id WHERE child.previous_snapshot_id<>0 AND (parent.snapshot_id IS NULL OR parent.catalog_id<>child.catalog_id OR parent.snapshot_id>=child.snapshot_id);
+----
+0
+
+query II
+SELECT count(*) = count(DISTINCT table_id), count(*) FROM inspect.lineage.ducklake_table WHERE end_snapshot IS NULL;
+----
+true	4
+
+query II
+SELECT count(*)=count(DISTINCT data_file_id), count(*)>=26 FROM inspect.lineage.ducklake_data_file;
+----
+true	true
+
+statement ok
+USE memory;
+DETACH one;
+DETACH two;
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS one (CATALOG_ID 0, METADATA_SCHEMA 'lineage');
+
+query I
+SELECT count(*) FROM one.items;
+----
+14

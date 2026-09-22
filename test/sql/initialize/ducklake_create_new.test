@@ -1,24 +1,94 @@
 # name: test/sql/initialize/ducklake_create_new.test
-# description: test ducklake extension
+# description: Managed attachments require provisioned metadata and validate catalog identity
 # group: [initialize]
 
 require ducklake
 
 require parquet
 
-# when CREATE_IF_NOT_EXISTS is specified we cannot connect to a non-existent ducklake
+# Neither a name nor CREATE_IF_NOT_EXISTS substitutes for a catalog ID.
 statement error
-ATTACH 'ducklake:{TEST_DIR}/ducklake_non_existent.db' AS ducklake (CREATE_IF_NOT_EXISTS false)
+ATTACH 'ducklake:{TEST_DIR}/missing.db' AS workbook;
 ----
-creating a new DuckLake is explicitly disabled
+CATALOG_ID is required
 
-# create a new one
-statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_existent.db' AS ducklake (CREATE_IF_NOT_EXISTS true)
+statement error
+ATTACH 'ducklake:{TEST_DIR}/missing.db' AS workbook (CATALOG 'test');
+----
+CATALOG_ID is required
+
+statement error
+ATTACH 'ducklake:{TEST_DIR}/missing.db' AS workbook (CATALOG_ID 0, CREATE_IF_NOT_EXISTS true);
+----
+metadata must be provisioned
+
+statement error
+ATTACH 'ducklake:{TEST_DIR}/missing.db' AS workbook (CATALOG_ID 0, CREATE_IF_NOT_EXISTS false);
+----
+metadata must be provisioned
+
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/metadata.db,main,{TEST_DIR}/data
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
+statement error
+ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS workbook (CATALOG_ID 999, DATA_PATH '{TEST_DIR}/data');
+----
+does not identify an active catalog
+
+statement error
+ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS workbook (CATALOG_ID 0, CATALOG 'wrong', DATA_PATH '{TEST_DIR}/data');
+----
+does not match CATALOG_ID
 
 statement ok
-DETACH ducklake;
+ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS "independent alias" (CATALOG_ID 0, CATALOG 'test', DATA_PATH '{TEST_DIR}/data', CREATE_IF_NOT_EXISTS false);
+CREATE TABLE "independent alias".items AS SELECT 42 AS value;
+DETACH "independent alias";
+ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS workbook (CATALOG_ID 0);
 
-# we can attach to an existing ducklake
+query I
+SELECT * FROM workbook.items;
+----
+42
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_existent.db' AS ducklake (CREATE_IF_NOT_EXISTS false)
+DETACH workbook;
+ATTACH '{TEST_DIR}/metadata.db' AS inspect;
+UPDATE inspect.ducklake_metadata SET value='0.5-dev1' WHERE key='version';
+DETACH inspect;
+
+statement error
+ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS workbook (CATALOG_ID 0);
+----
+requires Crucible metadata version 1.1-dev1-catalog1
+
+statement ok
+ATTACH '{TEST_DIR}/metadata.db' AS inspect;
+
+query T
+SELECT value FROM inspect.ducklake_metadata WHERE key='version';
+----
+0.5-dev1
+
+statement ok
+DELETE FROM inspect.ducklake_metadata WHERE key='version';
+DETACH inspect;
+
+statement error
+ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS workbook (CATALOG_ID 0);
+----
+version is missing
+
+statement ok
+ATTACH '{TEST_DIR}/metadata.db' AS inspect;
+INSERT INTO inspect.ducklake_metadata(key,value) VALUES ('version','1.1-dev1-catalog1');
+UPDATE inspect.ducklake_catalog SET end_snapshot=1 WHERE catalog_id=0;
+DETACH inspect;
+
+statement error
+ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS workbook (CATALOG_ID 0);
+----
+does not identify an active catalog

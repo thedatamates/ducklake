@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/view_alias_binding.db,main,{TEST_DIR}/view_alias_binding
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_alias_binding.db' AS ducklake (DATA_PATH '{TEST_DIR}/view_alias_binding')
+ATTACH 'ducklake:{TEST_DIR}/view_alias_binding.db' AS ducklake (DATA_PATH '{TEST_DIR}/view_alias_binding', CATALOG_ID 0);
 
 statement ok
 USE ducklake
@@ -30,7 +36,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_alias_binding.db' AS ducklake (DATA_PATH '{TEST_DIR}/view_alias_binding')
+ATTACH 'ducklake:{TEST_DIR}/view_alias_binding.db' AS ducklake (DATA_PATH '{TEST_DIR}/view_alias_binding', CATALOG_ID 0);
 
 query I
 SELECT count(*) FROM information_schema.tables WHERE table_catalog = 'ducklake' AND table_type = 'VIEW'

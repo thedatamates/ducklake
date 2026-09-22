@@ -8,19 +8,25 @@ require parquet
 
 # invalid version should fail
 statement error
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_err.db' AS ducklake_err(DATA_PATH '{TEST_DIR}/ducklake_version_err_files', DUCKLAKE_VERSION '2.0')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_err.db' AS ducklake_err(DATA_PATH '{TEST_DIR}/ducklake_version_err_files', DUCKLAKE_VERSION '2.0', CATALOG_ID 0);
 ----
 Unsupported ducklake_version
 
 # pre-1.0 versions should be rejected as user option
 statement error
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_err.db' AS ducklake_err(DATA_PATH '{TEST_DIR}/ducklake_version_err_files', DUCKLAKE_VERSION '0.4')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_err.db' AS ducklake_err(DATA_PATH '{TEST_DIR}/ducklake_version_err_files', DUCKLAKE_VERSION '0.4', CATALOG_ID 0);
 ----
 ducklake_version must be >= '1.0'
 
 # create a new database pinned to version 1.0
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_version_10.db,main,{TEST_DIR}/ducklake_version_10_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_10_files', DUCKLAKE_VERSION '1.0')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_version_10_files', DUCKLAKE_VERSION '1.0', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.t1(i INT);
@@ -43,7 +49,7 @@ DETACH ducklake
 
 # re-attach with matching version should succeed
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_10_files', DUCKLAKE_VERSION '1.0')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_version_10_files', DUCKLAKE_VERSION '1.0', CATALOG_ID 0);
 
 query I
 SELECT value FROM __ducklake_metadata_ducklake.ducklake_metadata WHERE key = 'version'
@@ -60,7 +66,7 @@ DETACH ducklake
 
 # re-attach without version. catalog is 1.0, no migration needed, uses V1.0 manager
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_10_files')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_version_10_files', CATALOG_ID 0);
 
 query I
 SELECT value FROM __ducklake_metadata_ducklake.ducklake_metadata WHERE key = 'version'
@@ -77,7 +83,7 @@ DETACH ducklake
 
 # re-attach with automatic_migration migrates to latest
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_10_files', AUTOMATIC_MIGRATION TRUE)
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_version_10_files', AUTOMATIC_MIGRATION TRUE, CATALOG_ID 0);
 
 query I
 SELECT value FROM __ducklake_metadata_ducklake.ducklake_metadata WHERE key = 'version'
@@ -94,7 +100,7 @@ DETACH ducklake
 
 # after migration, re-attach without version should succeed (now at 1.1-dev1)
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_10_files')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_version_10_files', CATALOG_ID 0);
 
 query I
 SELECT value FROM __ducklake_metadata_ducklake.ducklake_metadata WHERE key = 'version'
@@ -111,13 +117,19 @@ DETACH ducklake
 
 # cannot downgrade: attach a 1.1-dev1 catalog with DUCKLAKE_VERSION '1.0'
 statement error
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_10_files', DUCKLAKE_VERSION '1.0')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_10.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_10_files', DUCKLAKE_VERSION '1.0', CATALOG_ID 0);
 ----
 Cannot downgrade
 
 # create a new database with default version (1.1-dev1)
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_version_default.db,main,{TEST_DIR}/ducklake_version_default_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_default.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_default_files')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_default.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_version_default_files', CATALOG_ID 0);
 
 query I
 SELECT value FROM __ducklake_metadata_ducklake.ducklake_metadata WHERE key = 'version'
@@ -140,7 +152,7 @@ DETACH ducklake
 
 # re-attach default version database, no migration needed
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_default.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_default_files')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_default.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_version_default_files', CATALOG_ID 0);
 
 query I
 SELECT value FROM __ducklake_metadata_ducklake.ducklake_metadata WHERE key = 'version'
@@ -160,7 +172,7 @@ statement ok
 SET ducklake_default_version = '2.0'
 
 statement error
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_global.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_global_files')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_global.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_global_files', CATALOG_ID 0);
 ----
 Unsupported ducklake_version
 
@@ -169,8 +181,14 @@ statement ok
 SET ducklake_default_version = '1.0'
 
 # new database with global version 1.0
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_version_global.db,main,{TEST_DIR}/ducklake_version_global_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_global.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_global_files')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_global.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_version_global_files', CATALOG_ID 0);
 
 query I
 SELECT value FROM __ducklake_metadata_ducklake.ducklake_metadata WHERE key = 'version'
@@ -193,7 +211,7 @@ DETACH ducklake
 
 # re-attach with global version 1.0 should succeed (catalog is 1.0)
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_global.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_global_files')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_global.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_version_global_files', CATALOG_ID 0);
 
 query I
 SELECT value FROM __ducklake_metadata_ducklake.ducklake_metadata WHERE key = 'version'
@@ -214,7 +232,7 @@ RESET ducklake_default_version
 
 # re-attach without version, catalog is 1.0, works fine (no downgrade, just older)
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_version_global.db' AS ducklake(DATA_PATH '{TEST_DIR}/ducklake_version_global_files')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_version_global.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_version_global_files', CATALOG_ID 0);
 
 query I
 SELECT value

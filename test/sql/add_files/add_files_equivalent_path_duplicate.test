@@ -6,7 +6,7 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 # Object storage generally doesn't have directory concept, so s3://bucket/object and s3://bucket/./object are two different objects; disable from CI.
 # For remote data path tests, environment variable DATA_PATH is overriden, so we use LOCAL_DATA_PATH.
@@ -14,12 +14,18 @@ test-env DATA_PATH {TEST_DIR}
 
 test-env LOCAL_DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/add_files_equivalent_path_duplicate
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
 ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (
   DATA_PATH '{DATA_PATH}/add_files_equivalent_path_duplicate',
   METADATA_CATALOG 'metadata',
   DATA_INLINING_ROW_LIMIT 0
-)
+, CATALOG_ID 0)
 
 statement ok
 COPY (SELECT 42::INT AS i) TO '{LOCAL_DATA_PATH}/one.parquet' (FORMAT parquet)

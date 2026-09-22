@@ -10,8 +10,14 @@ test-env DUCKLAKE_CONNECTION {TEST_DIR}/multiple_column_changes.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/multiple_column_changes
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/multiple_column_changes', METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/multiple_column_changes', METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 statement ok
 use ducklake
@@ -41,7 +47,7 @@ statement ok
 detach ducklake
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/multiple_column_changes', METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/multiple_column_changes', METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 statement ok
 use ducklake

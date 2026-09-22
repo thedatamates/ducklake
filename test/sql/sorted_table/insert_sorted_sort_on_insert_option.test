@@ -6,14 +6,20 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
-test-env DUCKLAKE_CONNECTION_2 {TEST_DIR}/{UUID}_2.db
+test-env DUCKLAKE_CONNECTION_2 {TEST_DIR}/metadata_2.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/sort_on_insert_option
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/sort_on_insert_option')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/sort_on_insert_option', CATALOG_ID 0);
 
 # -----------------------------------------------
 # Test 1: Default behavior - INSERT sorts (sort_on_insert not set, defaults to true)
@@ -190,8 +196,14 @@ SELECT * FROM ducklake.test_compaction
 statement ok
 DETACH ducklake
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION_2},main,{DATA_PATH}/sort_on_insert_flush
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION_2}' AS ducklake2 (DATA_PATH '{DATA_PATH}/sort_on_insert_flush', DATA_INLINING_ROW_LIMIT 10)
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION_2}' AS ducklake2 (DATA_PATH '{DATA_PATH}/sort_on_insert_flush', DATA_INLINING_ROW_LIMIT 10, CATALOG_ID 0);
 
 statement ok
 CALL ducklake_set_option('ducklake2', 'sort_on_insert', 'false')

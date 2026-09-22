@@ -12,8 +12,14 @@ test-env DUCKLAKE_CONNECTION {TEST_DIR}/future_timestamp.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/future_timestamp
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/future_timestamp')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/future_timestamp', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.test AS SELECT 42 AS i
@@ -93,12 +99,12 @@ statement ok
 DETACH ducklake
 
 statement error
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (SNAPSHOT_TIME '9999-01-01 00:00:00+00')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (SNAPSHOT_TIME '9999-01-01 00:00:00+00', CATALOG_ID 0);
 ----
 Cannot time travel to a future timestamp
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (SNAPSHOT_TIME getvariable('snapshot_time'))
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (SNAPSHOT_TIME getvariable('snapshot_time'), CATALOG_ID 0);
 
 query I
 SELECT * FROM ducklake.test

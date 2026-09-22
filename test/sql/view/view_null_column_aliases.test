@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/view_null_column_aliases.db,main,{TEST_DIR}/view_null_column_aliases_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_null_column_aliases.db' AS dl (DATA_PATH '{TEST_DIR}/view_null_column_aliases_files')
+ATTACH 'ducklake:{TEST_DIR}/view_null_column_aliases.db' AS dl (DATA_PATH '{TEST_DIR}/view_null_column_aliases_files', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE dl.t AS SELECT 42 AS a
@@ -31,7 +37,7 @@ statement ok
 DETACH dl
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_null_column_aliases.db' AS dl (DATA_PATH '{TEST_DIR}/view_null_column_aliases_files')
+ATTACH 'ducklake:{TEST_DIR}/view_null_column_aliases.db' AS dl (DATA_PATH '{TEST_DIR}/view_null_column_aliases_files', CATALOG_ID 0);
 
 # Check the state of the column_aliases column.
 query TT

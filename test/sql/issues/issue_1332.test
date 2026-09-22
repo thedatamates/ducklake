@@ -10,8 +10,14 @@ test-env DUCKLAKE_CONNECTION {TEST_DIR}/issue_1332.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS dl (DATA_PATH '{DATA_PATH}', DATA_INLINING_ROW_LIMIT 0)
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS dl (DATA_PATH '{DATA_PATH}', DATA_INLINING_ROW_LIMIT 0, CATALOG_ID 0);
 
 statement ok
 USE dl
@@ -396,8 +402,14 @@ hello
 
 # same fix with data inlining left at its default (row limit 10) rather than disabled - covers the
 # inlined-data flush path adjacent to #740, including a reattach where the corruption would surface
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/issue_1332_inline.db,main,{DATA_PATH}
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/issue_1332_inline.db' AS dli (DATA_PATH '{DATA_PATH}')
+ATTACH 'ducklake:{TEST_DIR}/issue_1332_inline.db' AS dli (DATA_PATH '{DATA_PATH}', CATALOG_ID 0);
 
 statement ok
 USE dli
@@ -433,7 +445,7 @@ statement ok
 DETACH dli
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/issue_1332_inline.db' AS dli (DATA_PATH '{DATA_PATH}')
+ATTACH 'ducklake:{TEST_DIR}/issue_1332_inline.db' AS dli (DATA_PATH '{DATA_PATH}', CATALOG_ID 0);
 
 query II
 SELECT * FROM dli.t_in2 ORDER BY id
@@ -452,7 +464,7 @@ statement ok
 DETACH dl
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS dl (DATA_PATH '{DATA_PATH}')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS dl (DATA_PATH '{DATA_PATH}', CATALOG_ID 0);
 
 query II
 SELECT * FROM dl.t_add2

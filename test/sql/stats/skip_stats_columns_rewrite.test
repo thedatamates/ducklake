@@ -10,8 +10,14 @@ test-env DUCKLAKE_CONNECTION {TEST_DIR}/skip_stats_columns_rewrite.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/skip_stats_columns_rewrite
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/skip_stats_columns_rewrite', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 100)
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/skip_stats_columns_rewrite', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 100, CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.skipped(s VARCHAR)

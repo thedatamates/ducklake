@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/test_deletion_from_file_and_inserted_inlining_non_sequential
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_deletion_from_file_and_inserted_inlining_non_sequential', DATA_INLINING_ROW_LIMIT 5, METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_deletion_from_file_and_inserted_inlining_non_sequential', DATA_INLINING_ROW_LIMIT 5, METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 statement ok
 use ducklake
@@ -35,14 +41,14 @@ SELECT table_id, begin_snapshot, end_snapshot, delete_count, partial_max FROM du
 ----
 
 query IIII
-FROM ducklake_meta.ducklake_inlined_data_1_1 ORDER BY ALL
+FROM ducklake_meta.ducklake_inlined_data_0_1_1 ORDER BY ALL
 ----
 10	2	NULL	999
 11	2	3	500
 12	2	NULL	777
 
 query III
-SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_1 ORDER BY row_id
+SELECT file_id, row_id, begin_snapshot FROM ducklake_meta.ducklake_inlined_delete_0_1 ORDER BY row_id
 ----
 0	5	3
 

@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION __TEST_DIR__/metadata.db
 
 test-env DATA_PATH __TEST_DIR__
 
+foreach fixture_path,fixture_schema,fixture_data_path ${DUCKLAKE_CONNECTION},main,${DATA_PATH}/ducklake_empty_stats_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_empty_stats_files')
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_empty_stats_files', CATALOG_ID 0);
 
 # negative results are cached; verify they're invalidated after rows are added
 

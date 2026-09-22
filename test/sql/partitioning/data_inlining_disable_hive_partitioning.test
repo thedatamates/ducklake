@@ -6,13 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION __TEST_DIR__/metadata.db
 
 test-env DATA_PATH __TEST_DIR__
 
+foreach fixture_path,fixture_schema,fixture_data_path ${DUCKLAKE_CONNECTION},main,${DATA_PATH}/ducklake_partition_use_hive
+
+include test/fixtures/managed_catalog.sql
+
+endloop
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_partition_use_hive', METADATA_CATALOG 'ducklake_metadata', DATA_INLINING_ROW_LIMIT 0)
+ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_partition_use_hive', METADATA_CATALOG 'ducklake_metadata', DATA_INLINING_ROW_LIMIT 0, CATALOG_ID 0);
 
 statement ok
 USE ducklake

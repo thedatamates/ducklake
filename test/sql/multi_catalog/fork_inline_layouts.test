@@ -1,0 +1,116 @@
+# name: test/sql/multi_catalog/fork_inline_layouts.test
+# description: Forks decode older inline layouts and own independent inline data and deletions
+# group: [multi_catalog]
+
+require ducklake
+
+require parquet
+
+require postgres_scanner
+
+require-env DUCKLAKE_TEST_POSTGRES
+
+foreach fixture_schema,fixture_data_path fork_inline,{TEST_DIR}/shared
+
+include test/fixtures/managed_catalog_postgres.sql
+
+statement ok
+ATTACH '{DUCKLAKE_TEST_POSTGRES}' AS inspect (TYPE postgres);
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS parent (CATALOG_ID 0, METADATA_SCHEMA 'fork_inline');
+CREATE TABLE parent.items AS SELECT 1 AS id UNION ALL SELECT 2;
+ALTER TABLE parent.items RENAME COLUMN id TO key;
+ALTER TABLE parent.items ADD COLUMN label VARCHAR DEFAULT 'old';
+INSERT INTO parent.items VALUES (3, 'new');
+DELETE FROM parent.items WHERE key=2;
+CALL parent.set_option('data_inlining_row_limit', 0);
+CREATE TABLE parent.disk AS SELECT i AS id FROM range(50) t(i);
+CALL parent.set_option('data_inlining_row_limit', 100);
+DELETE FROM parent.disk WHERE id<2;
+
+include test/fixtures/fork_catalog.sql
+
+# Copy the physical inline tables as an external provisioner does.
+statement ok
+CALL postgres_execute('inspect', 'DO $$ DECLARE r record; target text; BEGIN FOR r IN SELECT * FROM fork_inline.ducklake_inlined_data_tables WHERE catalog_id=0 LOOP target := replace(r.table_name, ''ducklake_inlined_data_0_'', ''ducklake_inlined_data_1_''); EXECUTE format(''CREATE TABLE fork_inline.%I AS TABLE fork_inline.%I'', target, r.table_name); INSERT INTO fork_inline.ducklake_inlined_data_tables VALUES (1, r.table_id, target, r.schema_version); END LOOP; FOR r IN SELECT table_id FROM fork_inline.ducklake_table WHERE catalog_id=0 AND end_snapshot IS NULL LOOP IF to_regclass(''fork_inline.ducklake_inlined_delete_0_'' || r.table_id) IS NOT NULL THEN EXECUTE format(''CREATE TABLE fork_inline.%I AS TABLE fork_inline.%I'', ''ducklake_inlined_delete_1_'' || r.table_id, ''ducklake_inlined_delete_0_'' || r.table_id); END IF; END LOOP; END $$', prepare=false);
+
+endloop
+
+statement ok
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS child (CATALOG_ID 1, METADATA_SCHEMA 'fork_inline');
+
+query IT
+SELECT * FROM child.items ORDER BY key;
+----
+1	old
+3	new
+
+query II
+SELECT count(*), sum(id) FROM child.disk;
+----
+48	1224
+
+query II
+SELECT count(*)>1, count(*)=count(DISTINCT table_name) FROM inspect.fork_inline.ducklake_inlined_data_tables;
+----
+true	true
+
+statement ok
+UPDATE child.items SET label='child' WHERE key=1;
+INSERT INTO child.items VALUES (4, 'child');
+DELETE FROM child.disk WHERE id=2;
+INSERT INTO parent.items VALUES (5, 'parent');
+DELETE FROM parent.disk WHERE id=3;
+
+query IT
+SELECT * FROM child.items ORDER BY key;
+----
+1	child
+3	new
+4	child
+
+query IT
+SELECT * FROM parent.items ORDER BY key;
+----
+1	old
+3	new
+5	parent
+
+query II
+SELECT (SELECT count(*) FROM child.disk WHERE id=3), (SELECT count(*) FROM parent.disk WHERE id=2);
+----
+1	1
+
+# Flushing must decode the original pre-rename/pre-add layouts copied into the fork.
+statement ok
+CALL ducklake_flush_inlined_data('child');
+USE memory;
+DETACH child;
+ATTACH 'ducklake:postgres:{DUCKLAKE_TEST_POSTGRES}' AS child (CATALOG_ID 1, METADATA_SCHEMA 'fork_inline');
+
+query IT
+SELECT * FROM child.items ORDER BY key;
+----
+1	child
+3	new
+4	child
+
+query II
+SELECT count(*), sum(id) FROM child.disk;
+----
+47	1222
+
+query II
+SELECT count(*), sum(id) FROM parent.disk;
+----
+47	1221
+
+query IT
+SELECT * FROM child.items AT (VERSION => getvariable('fork_snapshot')) ORDER BY key;
+----
+1	old
+3	new
+
+statement error
+SELECT * FROM child.items AT (VERSION => 1);
+----
+snapshot

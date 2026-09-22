@@ -6,16 +6,27 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
+
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/ducklake_puffin_orphan
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
+statement ok
+ATTACH '{DUCKLAKE_CONNECTION}' AS fixture_metadata;
+UPDATE fixture_metadata.ducklake_schema SET path='test/main/' WHERE catalog_id=0;
+DETACH fixture_metadata;
 
 statement ok
 ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (
     DATA_PATH '{DATA_PATH}/ducklake_puffin_orphan',
     DATA_INLINING_ROW_LIMIT 0,
     WRITE_DELETION_VECTORS true
-)
+, CATALOG_ID 0)
 
 statement ok
 CREATE TABLE ducklake.test AS SELECT i FROM range(100) t(i)
@@ -42,7 +53,7 @@ SET VARIABLE live_puffin = (
 statement ok
 COPY (
     SELECT content FROM read_blob(getvariable('live_puffin'))
-) TO '{DATA_PATH}/ducklake_puffin_orphan/main/test/orphan-delete.puffin' (FORMAT BLOB)
+) TO '{DATA_PATH}/ducklake_puffin_orphan/test/main/test/orphan-delete.puffin' (FORMAT BLOB)
 
 # The byte-for-byte copied puffin file should be deleted.
 query I
@@ -56,7 +67,7 @@ CALL ducklake_delete_orphaned_files('ducklake', cleanup_all => true)
 
 query I
 SELECT count(*)
-FROM glob('{DATA_PATH}/ducklake_puffin_orphan/main/test/*-delete.puffin')
+FROM glob('{DATA_PATH}/ducklake_puffin_orphan/test/main/test/*-delete.puffin')
 WHERE ends_with(file, '/orphan-delete.puffin')
 ----
 0

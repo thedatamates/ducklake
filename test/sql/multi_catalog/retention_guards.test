@@ -1,0 +1,72 @@
+# name: test/sql/multi_catalog/retention_guards.test
+# description: Rejected expiration leaves snapshots, files and historical reads intact
+# group: [multi_catalog]
+
+require ducklake
+
+require parquet
+
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/retention.db,main,{TEST_DIR}/data
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
+statement ok
+ATTACH 'ducklake:{TEST_DIR}/retention.db' AS lake (CATALOG_ID 0, DATA_INLINING_ROW_LIMIT 0);
+CREATE TABLE lake.items AS SELECT i AS id FROM range(10) t(i);
+DELETE FROM lake.items WHERE id<3;
+INSERT INTO lake.items VALUES (10);
+CALL ducklake_rewrite_data_files('lake', 'items', delete_threshold=>0);
+CALL ducklake_merge_adjacent_files('lake', 'items');
+CREATE TABLE before_snapshots AS FROM __ducklake_metadata_lake.ducklake_snapshot;
+CREATE TABLE before_files AS FROM __ducklake_metadata_lake.ducklake_data_file;
+CREATE TABLE before_deletes AS FROM __ducklake_metadata_lake.ducklake_delete_file;
+
+statement error
+CALL ducklake_expire_snapshots('lake', versions=>[1]);
+----
+Snapshot expiration is not supported
+
+statement error
+CALL ducklake_expire_snapshots('lake', older_than=>now());
+----
+Snapshot expiration is not supported
+
+query I
+SELECT count(*) FROM ((FROM before_snapshots EXCEPT ALL FROM __ducklake_metadata_lake.ducklake_snapshot) UNION ALL (FROM __ducklake_metadata_lake.ducklake_snapshot EXCEPT ALL FROM before_snapshots));
+----
+0
+
+query I
+SELECT count(*) FROM ((FROM before_files EXCEPT ALL FROM __ducklake_metadata_lake.ducklake_data_file) UNION ALL (FROM __ducklake_metadata_lake.ducklake_data_file EXCEPT ALL FROM before_files));
+----
+0
+
+query I
+SELECT count(*) FROM ((FROM before_deletes EXCEPT ALL FROM __ducklake_metadata_lake.ducklake_delete_file) UNION ALL (FROM __ducklake_metadata_lake.ducklake_delete_file EXCEPT ALL FROM before_deletes));
+----
+0
+
+statement ok
+CALL ducklake_cleanup_old_files('lake', cleanup_all=>true);
+CHECKPOINT lake;
+
+query II
+SELECT count(*), sum(id) FROM lake.items AT (VERSION=>1);
+----
+10	45
+
+query II
+SELECT count(*), sum(id) FROM lake.items;
+----
+8	52
+
+statement ok
+DROP TABLE lake.items;
+CALL ducklake_cleanup_old_files('lake', cleanup_all=>true);
+
+query II
+SELECT count(*), sum(id) FROM lake.items AT (VERSION=>1);
+----
+10	45

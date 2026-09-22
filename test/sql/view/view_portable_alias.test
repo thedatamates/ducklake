@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/view_alias.db,main,{TEST_DIR}/view_alias_data
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_alias.db' AS dl (DATA_PATH '{TEST_DIR}/view_alias_data')
+ATTACH 'ducklake:{TEST_DIR}/view_alias.db' AS dl (DATA_PATH '{TEST_DIR}/view_alias_data', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE dl.t (id INT, val VARCHAR)
@@ -31,7 +37,7 @@ statement ok
 DETACH dl
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_alias.db' AS dl (DATA_PATH '{TEST_DIR}/view_alias_data')
+ATTACH 'ducklake:{TEST_DIR}/view_alias.db' AS dl (DATA_PATH '{TEST_DIR}/view_alias_data', CATALOG_ID 0);
 
 query II
 SELECT * FROM dl.v ORDER BY id
@@ -45,7 +51,7 @@ statement ok
 DETACH dl
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_alias.db' AS dl2 (DATA_PATH '{TEST_DIR}/view_alias_data')
+ATTACH 'ducklake:{TEST_DIR}/view_alias.db' AS dl2 (DATA_PATH '{TEST_DIR}/view_alias_data', CATALOG_ID 0);
 
 query II
 SELECT * FROM dl2.v ORDER BY id

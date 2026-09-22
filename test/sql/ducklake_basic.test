@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake.db,main,{TEST_DIR}/ducklake_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_files', METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{TEST_DIR}/ducklake.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_files', METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.test(i INTEGER, j INTEGER);
@@ -54,7 +60,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake.db' AS ducklake
+ATTACH 'ducklake:{TEST_DIR}/ducklake.db' AS ducklake (CATALOG_ID 0);
 
 query II
 SELECT * FROM ducklake.test
@@ -82,8 +88,14 @@ test
 test2
 
 # data path is not required for DuckDB databases
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_no_data_path.db,main,{TEST_DIR}/ducklake_no_data_path.db.files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_no_data_path.db' AS ducklake_no_data_path
+ATTACH 'ducklake:{TEST_DIR}/ducklake_no_data_path.db' AS ducklake_no_data_path (CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake_no_data_path.tbl(i INT);

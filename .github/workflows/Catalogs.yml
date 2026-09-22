@@ -9,7 +9,7 @@ defaults:
 
 jobs:
   ducklake-config-tests:
-    name: DuckDB Tests with DuckLake + (Postgres/SQLite)
+    name: Managed DuckDB and shared PostgreSQL catalogs
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -23,9 +23,7 @@ jobs:
       VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
       GEN: Ninja
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-      ENABLE_SQLITE_SCANNER: ON
       ENABLE_POSTGRES_SCANNER: ON
-      ENABLE_QUACK: ON
       BUILD_EXTENSION_TEST_DEPS: full
       DUCKLAKE_CI: 1
 
@@ -72,21 +70,20 @@ jobs:
       run: |
         make release
 
-    - name: Test Quack
-      run: |
-        python3 scripts/run_quack_tests.py --timeout 300
-
-    - name: Test SQLite
+    - name: Test managed DuckDB catalogs
       env:
         DUCKDB_TPCH_ANSWERS_DIR: ${{ github.workspace }}/duckdb/extension/tpch/dbgen/answers
       run: |
-        build/release/test/unittest --test-config test/configs/sqlite.json --test-dir ./ "test/sql/*"
+        build/release/test/unittest --test-config test/configs/managed.json --test-dir ./ "~[.]test/sql/*"
 
-    - name: Test Postgres
+    - name: Test shared PostgreSQL catalogs and forks
       env:
-        PGSERVICE: postgres
+        PGHOST: localhost
+        PGUSER: postgres
+        PGPASSWORD: postgres
+        DUCKLAKE_TEST_POSTGRES: 'host=localhost user=postgres password=postgres dbname=ducklake_suite'
         LOCAL_EXTENSION_REPO: ${{ github.workspace }}/build/release/repository
         DUCKDB_TPCH_ANSWERS_DIR: ${{ github.workspace }}/duckdb/extension/tpch/dbgen/answers
       run: |
-        createdb ducklakedb
-        build/release/test/unittest --test-config test/configs/postgres.json --test-dir ./ "test/sql/*"
+        createdb ducklake_suite
+        build/release/test/unittest --test-config test/configs/managed.json --test-dir ./ "test/sql/multi_catalog/*"

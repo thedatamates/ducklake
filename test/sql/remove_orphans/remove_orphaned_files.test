@@ -9,12 +9,23 @@ require parquet
 require icu
 
 # partitioning based on a column
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/remove_orphaned_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/remove_orphaned_files', METADATA_CATALOG 'ducklake_metadata')
+ATTACH '{DUCKLAKE_CONNECTION}' AS fixture_metadata;
+UPDATE fixture_metadata.ducklake_schema SET path='test/main/' WHERE catalog_id=0;
+DETACH fixture_metadata;
+
+statement ok
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/remove_orphaned_files', METADATA_CATALOG 'ducklake_metadata', CATALOG_ID 0);
 
 statement ok
 USE ducklake
@@ -41,11 +52,11 @@ test	2	1
 
 # Add orphaned file
 statement ok
-COPY test to '{DATA_PATH}/remove_orphaned_files/main/test/bla.parquet';
+COPY test to '{DATA_PATH}/remove_orphaned_files/test/main/test/bla.parquet';
 
 # We should have 3 files
 query I
-SELECT COUNT(*) FROM GLOB('{DATA_PATH}/remove_orphaned_files/main/test/*')
+SELECT COUNT(*) FROM GLOB('{DATA_PATH}/remove_orphaned_files/test/main/test/*')
 ----
 4
 

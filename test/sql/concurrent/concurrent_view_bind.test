@@ -8,8 +8,14 @@ require parquet
 
 require notwindows
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/concurrent_view_bind.db,main,{TEST_DIR}/concurrent_view_bind
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/concurrent_view_bind.db' AS ducklake (DATA_PATH '{TEST_DIR}/concurrent_view_bind')
+ATTACH 'ducklake:{TEST_DIR}/concurrent_view_bind.db' AS ducklake (DATA_PATH '{TEST_DIR}/concurrent_view_bind', CATALOG_ID 0);
 
 statement ok
 USE ducklake
@@ -32,8 +38,7 @@ DETACH ducklake
 
 # Reattach - views are now unbound
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/concurrent_view_bind.db' AS ducklake (DATA_PATH '{TEST_DIR}/concurrent_view_bind')
-
+ATTACH 'ducklake:{TEST_DIR}/concurrent_view_bind.db' AS ducklake (DATA_PATH '{TEST_DIR}/concurrent_view_bind', CATALOG_ID 0);
 # Concurrent catalog scans trigger concurrent Bind() calls
 concurrentloop i 0 100
 

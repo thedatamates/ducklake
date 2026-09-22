@@ -77,6 +77,11 @@ vector<Value> DuckLakeSnapshotsFunction::GetSnapshotValues(const DuckLakeSnapsho
 	auto other_changes = SnapshotChangeInformation::ParseChangesMade(snapshot.change_info.changes_made);
 	vector<Value> change_keys;
 	vector<Value> change_values;
+	if (other_changes.forked_from.IsValid()) {
+		change_keys.emplace_back("forked_from");
+		change_values.push_back(
+		    Value::LIST(LogicalType::VARCHAR, {Value(std::to_string(other_changes.forked_from.GetIndex()))}));
+	}
 	if (!other_changes.created_schemas.empty()) {
 		change_keys.emplace_back("schemas_created");
 		change_values.push_back(NameListToValue(other_changes.created_schemas));

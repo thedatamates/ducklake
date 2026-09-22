@@ -11,8 +11,14 @@ require icu
 statement ok
 SET TimeZone='UTC';
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/alter_insert_select.db,main,{TEST_DIR}/alter_insert_select
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/alter_insert_select.db' AS dl (DATA_PATH '{TEST_DIR}/alter_insert_select')
+ATTACH 'ducklake:{TEST_DIR}/alter_insert_select.db' AS dl (DATA_PATH '{TEST_DIR}/alter_insert_select', CATALOG_ID 0);
 
 statement ok
 USE dl
@@ -53,7 +59,7 @@ statement ok
 DETACH dl
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/alter_insert_select.db' AS dl (DATA_PATH '{TEST_DIR}/alter_insert_select')
+ATTACH 'ducklake:{TEST_DIR}/alter_insert_select.db' AS dl (DATA_PATH '{TEST_DIR}/alter_insert_select', CATALOG_ID 0);
 
 statement ok
 USE dl

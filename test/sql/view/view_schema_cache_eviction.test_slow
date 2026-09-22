@@ -9,8 +9,14 @@ require parquet
 # con1 creates a view and holds its transaction open while con2 churns the schema under a low memory
 # limit. The view must still land in its own schema when con1 finally commits.
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/view_schema_cache.db,main,{TEST_DIR}/view_schema_cache_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_schema_cache.db' AS ducklake (DATA_PATH '{TEST_DIR}/view_schema_cache_files', METADATA_CATALOG 'metadata')
+ATTACH 'ducklake:{TEST_DIR}/view_schema_cache.db' AS ducklake (DATA_PATH '{TEST_DIR}/view_schema_cache_files', METADATA_CATALOG 'metadata', CATALOG_ID 0);
 
 # Several schemas, so a misfiled view has somewhere else to land.
 statement ok
@@ -123,7 +129,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_schema_cache.db' AS ducklake (DATA_PATH '{TEST_DIR}/view_schema_cache_files')
+ATTACH 'ducklake:{TEST_DIR}/view_schema_cache.db' AS ducklake (DATA_PATH '{TEST_DIR}/view_schema_cache_files', CATALOG_ID 0);
 
 query I
 SELECT * FROM ducklake.target.v1

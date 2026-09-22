@@ -8,8 +8,14 @@ require parquet
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_epoch_gate.db,main,{DATA_PATH}/ducklake_epoch_gate
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_epoch_gate.db' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_epoch_gate', DUCKLAKE_VERSION '1.0')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_epoch_gate.db' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_epoch_gate', DUCKLAKE_VERSION '1.0', CATALOG_ID 0);
 
 statement ok
 USE ducklake
@@ -35,7 +41,7 @@ DETACH ducklake
 
 # migrating the catalog unlocks epoch transforms
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_epoch_gate.db' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_epoch_gate', METADATA_CATALOG 'ducklake_gate_meta', AUTOMATIC_MIGRATION TRUE)
+ATTACH 'ducklake:{TEST_DIR}/ducklake_epoch_gate.db' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_epoch_gate', METADATA_CATALOG 'ducklake_gate_meta', AUTOMATIC_MIGRATION TRUE, CATALOG_ID 0);
 
 statement ok
 USE ducklake

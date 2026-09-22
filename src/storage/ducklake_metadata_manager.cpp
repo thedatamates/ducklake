@@ -66,7 +66,7 @@ void DuckLakeMetadataManager::Register(const string &name, DuckLakeMetadataManag
 unique_ptr<DuckLakeMetadataManager> DuckLakeMetadataManager::Create(DuckLakeTransaction &transaction) {
 	lock_guard<mutex> lock(metadata_managers_lock);
 	auto &catalog = transaction.GetCatalog();
-	auto catalog_type = catalog.MetadataType();
+	auto catalog_type = StringUtil::Lower(catalog.MetadataType());
 	if (!catalog_type.empty() && catalog_type != "duckdb" && catalog_type != "postgres" &&
 	    catalog_type != "postgres_scanner") {
 		throw NotImplementedException("Crucible-managed catalogs support DuckDB and PostgreSQL metadata, not %s",
@@ -222,7 +222,9 @@ idx_t DuckLakeMetadataManager::GetNextSnapshotId() {
 	if (guard->HasError()) {
 		guard->GetErrorObject().Throw("Failed to acquire catalog commit guard: ");
 	}
-	auto result = Query("SELECT nextval('{METADATA_CATALOG}.ducklake_snapshot_id_seq')");
+	string sequence_name = "{METADATA_CATALOG}.ducklake_snapshot_id_seq";
+	SubstituteCatalogPlaceholders(sequence_name);
+	auto result = Query("SELECT nextval(" + SQLString::ToString(sequence_name) + ")");
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to allocate snapshot ID: ");
 	}
@@ -4622,7 +4624,7 @@ DuckLakeMetadataManager::DeleteOverwrittenDeleteFiles(const vector<DuckLakeOverw
 		if (!scheduled_deletions.empty()) {
 			scheduled_deletions += ", ";
 		}
-		scheduled_deletions += StringUtil::Format("(%d, %s, %s, NOW())", file.delete_file_id.index,
+		scheduled_deletions += StringUtil::Format("({CATALOG_ID}, %d, %s, %s, NOW())", file.delete_file_id.index,
 		                                          SQLString(path.path), path.path_is_relative ? "true" : "false");
 	}
 
@@ -4634,8 +4636,9 @@ WHERE catalog_id = {CATALOG_ID} AND delete_file_id IN (%s);
 )",
 	                                  deleted_file_ids);
 	// schedule the old files for disk deletion
-	batch_query +=
-	    "INSERT INTO {METADATA_CATALOG}.ducklake_files_scheduled_for_deletion VALUES " + scheduled_deletions + ";";
+	batch_query += "INSERT INTO {METADATA_CATALOG}.ducklake_files_scheduled_for_deletion "
+	               "(catalog_id, data_file_id, path, path_is_relative, schedule_start) VALUES " +
+	               scheduled_deletions + ";";
 	return batch_query;
 }
 
@@ -5393,6 +5396,16 @@ WHERE catalog_id = {CATALOG_ID}
 		res->GetErrorObject().Throw("Failed to get files scheduled for deletion from DuckLake: ");
 	}
 	auto context = transaction.context.lock();
+	auto &fs = FileSystem::GetFileSystem(*context);
+	// Imports can register the same physical file under a different ID or path spelling.
+	auto referenced_files = Query(GetKnownFilesForCleanupQuery("/", false));
+	if (referenced_files->HasError()) {
+		referenced_files->GetErrorObject().Throw("Failed to get files referenced by DuckLake: ");
+	}
+	unordered_set<string> referenced_paths;
+	for (auto &row : *referenced_files) {
+		referenced_paths.insert(fs.CanonicalizePath(row.GetValue<string>(0)));
+	}
 	vector<DuckLakeFileForCleanup> result;
 	for (auto &row : *res) {
 		DuckLakeFileForCleanup info;
@@ -5401,14 +5414,17 @@ WHERE catalog_id = {CATALOG_ID}
 		path.path = row.GetValue<string>(1);
 		path.path_is_relative = row.GetValue<bool>(2);
 		info.path = FromRelativePath(path);
+		if (referenced_paths.count(fs.CanonicalizePath(info.path))) {
+			continue;
+		}
 		info.time = GetTimestampTZFromRow(*context, row, 3);
 		result.push_back(std::move(info));
 	}
 	return result;
 }
 
-string DuckLakeMetadataManager::GetKnownFilesForCleanupQuery(const string &separator) const {
-	auto query = R"(SELECT REPLACE(
+string DuckLakeMetadataManager::GetKnownFilesForCleanupQuery(const string &separator, bool include_scheduled) const {
+	string query = R"(SELECT REPLACE(
            CASE
                WHEN NOT file_relative THEN file_path
                ELSE CASE
@@ -5432,7 +5448,11 @@ FROM
   ) AS f
    JOIN {METADATA_CATALOG}.ducklake_table t ON f.catalog_id = t.catalog_id AND f.table_id = t.table_id
    JOIN {METADATA_CATALOG}.ducklake_schema s ON t.catalog_id = s.catalog_id AND t.schema_id = s.schema_id) AS r
-UNION ALL
+)";
+	if (!include_scheduled) {
+		return query;
+	}
+	query += R"(UNION ALL
 SELECT REPLACE(
     CASE
         WHEN NOT f.path_is_relative THEN f.path
@@ -5454,62 +5474,32 @@ vector<DuckLakeFileForCleanup> DuckLakeMetadataManager::GetOrphanFilesForCleanup
 		known_files_res->GetErrorObject().Throw("Failed to get files scheduled for deletion from DuckLake: ");
 	}
 
-	vector<string> known_files;
+	auto context = transaction.context.lock();
+	auto &fs = FileSystem::GetFileSystem(*context);
+	unordered_set<string> known_files;
 	for (auto &row : *known_files_res) {
-		known_files.push_back(row.GetValue<string>(0));
+		known_files.insert(fs.CanonicalizePath(row.GetValue<string>(0)));
 	}
 
-	const string temp_table = "__ducklake_known_cleanup_files";
-	auto temp_table_identifier = DuckLakeUtil::SQLIdentifierToString(temp_table);
-
-	auto create_temp_query =
-	    StringUtil::Format("CREATE OR REPLACE TEMPORARY TABLE %s(full_path VARCHAR)", temp_table_identifier);
-	auto create_temp_res = transaction.ExecuteRaw(create_temp_query);
-	if (create_temp_res->HasError()) {
-		create_temp_res->GetErrorObject().Throw("Failed to create temporary file list for DuckLake cleanup: ");
-	}
-
-	auto drop_temp_table = [&]() {
-		try {
-			auto drop_temp_query = StringUtil::Format("DROP TABLE IF EXISTS %s", temp_table_identifier);
-			transaction.ExecuteRaw(drop_temp_query);
-		} catch (...) {
-		}
-	};
-
-	try {
-		Appender appender(transaction.GetConnection(), Identifier(temp_table));
-		for (auto &known_file : known_files) {
-			appender.AppendRow(known_file.c_str());
-		}
-		appender.Close();
-
-		auto query = StringUtil::Format(R"(SELECT filename
+	auto query = StringUtil::Format(R"(SELECT filename
 FROM read_blob({DATA_PATH} || '**') files
 WHERE (suffix(filename, '.parquet') OR suffix(filename, '.puffin'))
-AND NOT EXISTS (
-	SELECT 1 FROM %s known_files WHERE known_files.full_path = REPLACE(files.filename, '\', '/')
-)
 %s)",
-		                                temp_table_identifier, filter);
-		SubstituteCatalogPlaceholders(query);
-		auto res = transaction.ExecuteRaw(query);
-		if (res->HasError()) {
-			res->GetErrorObject().Throw("Failed to get files scheduled for deletion from DuckLake: ");
-		}
-
-		vector<DuckLakeFileForCleanup> result;
-		for (auto &row : *res) {
-			DuckLakeFileForCleanup info;
-			info.path = row.GetValue<string>(0);
+	                                filter);
+	SubstituteCatalogPlaceholders(query);
+	auto res = transaction.ExecuteRaw(query);
+	if (res->HasError()) {
+		res->GetErrorObject().Throw("Failed to get files scheduled for deletion from DuckLake: ");
+	}
+	vector<DuckLakeFileForCleanup> result;
+	for (auto &row : *res) {
+		DuckLakeFileForCleanup info;
+		info.path = row.GetValue<string>(0);
+		if (!known_files.count(fs.CanonicalizePath(info.path))) {
 			result.push_back(std::move(info));
 		}
-		drop_temp_table();
-		return result;
-	} catch (...) {
-		drop_temp_table();
-		throw;
 	}
+	return result;
 }
 
 vector<DuckLakeFileForCleanup> DuckLakeMetadataManager::GetFilesForCleanup(const string &filter, CleanupType type,

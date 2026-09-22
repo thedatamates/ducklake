@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake.db,main,{TEST_DIR}/ducklake_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_files', METADATA_CATALOG 'ducklake_meta')
+ATTACH 'ducklake:{TEST_DIR}/ducklake.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_files', METADATA_CATALOG 'ducklake_meta', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.ctas_table AS FROM range(10000)

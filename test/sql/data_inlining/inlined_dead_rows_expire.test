@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/inlined_dead_rows_expire_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/inlined_dead_rows_expire_files', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 100)
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/inlined_dead_rows_expire_files', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 100, CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.t1(i INTEGER)
@@ -24,7 +30,7 @@ DELETE FROM ducklake.t1 WHERE i=2
 
 # an older snapshot can still read the deleted row
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_1_1
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_0_1_1
 ----
 3
 
@@ -36,7 +42,7 @@ CALL ducklake_cleanup_old_files('ducklake', cleanup_all => true)
 
 # no snapshot can see it anymore
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_1_1
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_0_1_1
 ----
 2
 
@@ -63,7 +69,7 @@ statement ok
 CALL ducklake_expire_snapshots('ducklake', older_than => now())
 
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_1_1
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_0_1_1
 ----
 2
 
@@ -75,7 +81,7 @@ SELECT * FROM ducklake.t1 ORDER BY i
 
 # the live inlined table is kept, the next insert reuses it
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_tables WHERE table_name='ducklake_inlined_data_1_1'
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_data_tables WHERE table_name='ducklake_inlined_data_0_1_1'
 ----
 1
 

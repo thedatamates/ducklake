@@ -12,13 +12,18 @@ require parquet
 require notwindows
 
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/ducklake_concurrent_insert_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_concurrent_insert_files')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_concurrent_insert_files', CATALOG_ID 0);
 
 statement ok
 SET ducklake_retry_wait_ms=100
@@ -42,3 +47,9 @@ query II
 SELECT COUNT(*), SUM(key) FROM ducklake.tbl
 ----
 2	1
+
+
+query I
+SELECT COUNT(*) FROM (SELECT snapshot_id FROM ducklake_snapshots('ducklake') GROUP BY snapshot_id HAVING COUNT(*) > 1);
+----
+0

@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/view_literal.db,main,{TEST_DIR}/view_literal_data
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_literal.db' AS dl (DATA_PATH '{TEST_DIR}/view_literal_data')
+ATTACH 'ducklake:{TEST_DIR}/view_literal.db' AS dl (DATA_PATH '{TEST_DIR}/view_literal_data', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE dl.main.t(i INTEGER)
@@ -29,8 +35,7 @@ DETACH dl
 
 # Re-attach under a different catalog name
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/view_literal.db' AS other_name (DATA_PATH '{TEST_DIR}/view_literal_data')
-
+ATTACH 'ducklake:{TEST_DIR}/view_literal.db' AS other_name (DATA_PATH '{TEST_DIR}/view_literal_data', CATALOG_ID 0);
 # The string literal must still be 'dl.hello', NOT 'other_name.hello'
 query I
 SELECT * FROM other_name.main.v

@@ -6,7 +6,7 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
@@ -17,8 +17,14 @@ COPY (
     SELECT (DATE '2025-10-20' + (i::INTEGER))::DATE AS date, 0.0::FLOAT AS value FROM range(0, 20) t(i)
 ) TO '{DATA_PATH}/insert_sorted_default_direction.csv' (HEADER, DELIMITER ',')
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/insert_sorted_default_direction
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/insert_sorted_default_direction')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/insert_sorted_default_direction', CATALOG_ID 0);
 
 statement ok
 USE ducklake

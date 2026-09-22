@@ -6,6 +6,7 @@ namespace duckdb {
 namespace {
 
 enum class ChangeType {
+	FORKED_FROM,
 	CREATED_TABLE,
 	CREATED_VIEW,
 	CREATED_SCHEMA,
@@ -41,7 +42,9 @@ ChangeType ParseChangeType(const string &changes_made, idx_t &pos) {
 		}
 	}
 	auto change_type_str = changes_made.substr(start_pos, pos - start_pos);
-	if (StringUtil::CIEquals(change_type_str, "created_table")) {
+	if (StringUtil::CIEquals(change_type_str, "forked_from")) {
+		return ChangeType::FORKED_FROM;
+	} else if (StringUtil::CIEquals(change_type_str, "created_table")) {
 		return ChangeType::CREATED_TABLE;
 	} else if (StringUtil::CIEquals(change_type_str, "created_view")) {
 		return ChangeType::CREATED_VIEW;
@@ -207,6 +210,9 @@ SnapshotChangeInformation SnapshotChangeInformation::ParseChangesMade(const stri
 			break;
 		case ChangeType::DELETED_FROM_TABLE_INLINED:
 			result.tables_deleted_inlined.insert(TableIndex(StringUtil::ToUnsigned(entry.change_value)));
+			break;
+		case ChangeType::FORKED_FROM:
+			result.forked_from = StringUtil::ToUnsigned(entry.change_value);
 			break;
 		case ChangeType::FLUSHED_INLINE_DATA_FOR_TABLE:
 			result.tables_flushed_inlined.insert(TableIndex(StringUtil::ToUnsigned(entry.change_value)));

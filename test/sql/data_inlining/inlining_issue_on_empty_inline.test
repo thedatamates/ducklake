@@ -8,8 +8,14 @@ require parquet
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/inlining_issue_on_empty_inline.db,main,{DATA_PATH}/inlining_issue_on_empty_inline
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/inlining_issue_on_empty_inline.db' AS inlining (DATA_PATH '{DATA_PATH}/inlining_issue_on_empty_inline', DATA_INLINING_ROW_LIMIT 10);
+ATTACH 'ducklake:{TEST_DIR}/inlining_issue_on_empty_inline.db' AS inlining (DATA_PATH '{DATA_PATH}/inlining_issue_on_empty_inline', DATA_INLINING_ROW_LIMIT 10, CATALOG_ID 0);
 
 statement ok
 use inlining;
@@ -39,7 +45,7 @@ statement ok
 detach inlining
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/inlining_issue_on_empty_inline.db' AS inlining (DATA_PATH '{DATA_PATH}/inlining_issue_on_empty_inline', DATA_INLINING_ROW_LIMIT 10);
+ATTACH 'ducklake:{TEST_DIR}/inlining_issue_on_empty_inline.db' AS inlining (DATA_PATH '{DATA_PATH}/inlining_issue_on_empty_inline', DATA_INLINING_ROW_LIMIT 10, CATALOG_ID 0);
 
 statement ok
 use inlining;

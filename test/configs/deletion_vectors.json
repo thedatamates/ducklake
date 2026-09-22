@@ -28,5 +28,6 @@
         "test/sql/deletion_inlining/test_deletion_inlining_encryption.test"
       ]
     }
-  ]
+  ],
+  "inherit_skip_tests": "test/configs/managed.json"
 }

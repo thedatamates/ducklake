@@ -27,6 +27,6 @@ User-visible historical reads cannot precede catalog creation. A fork retains ol
 
 ## Validation
 
-The managed-catalog SQL regression passed 45 assertions, including concurrent transactions. Crucible's PostgreSQL regression runs catalog creation alongside extension writes and checks that allocation remains distinct. Separate concurrent PostgreSQL writers also produced distinct table and file IDs. The selected Crucible suite passed 65 tests.
+The direct `snapshot_lineage.test` uses shared PostgreSQL metadata to verify interleaved predecessor edges, rollback, overlapping catalog transactions and concurrent writers allocating distinct snapshot, table and file IDs. Restored single-catalog concurrency tests check row totals and duplicate snapshot IDs. Fork tests exercise externally allocated birth snapshots and `forked_from` provenance.
 
-These are targeted checks, not a claim that the full upstream suite or production concurrency behavior has been validated. Provisioning and migration are owned by Crucible; there is no extension-side sequence bootstrap or automatic repair of older metabases.
+See [Testing](TESTING.md) for commands, coverage and explicit lifecycle exclusions. These regressions do not establish production load capacity. Provisioning and migration are owned by Crucible; there is no extension-side sequence bootstrap or automatic repair of older metabases.

@@ -8,8 +8,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/scan_profiling.ducklake,main,{TEST_DIR}/scan_profiling_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/scan_profiling.ducklake' AS ducklake (DATA_PATH '{TEST_DIR}/scan_profiling_files');
+ATTACH 'ducklake:{TEST_DIR}/scan_profiling.ducklake' AS ducklake (DATA_PATH '{TEST_DIR}/scan_profiling_files', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.t (i INTEGER, j INTEGER);

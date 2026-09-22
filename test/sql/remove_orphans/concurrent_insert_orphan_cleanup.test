@@ -8,12 +8,23 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/concurrent_insert_orphan_cleanup
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/concurrent_insert_orphan_cleanup', DATA_INLINING_ROW_LIMIT 0)
+ATTACH '{DUCKLAKE_CONNECTION}' AS fixture_metadata;
+UPDATE fixture_metadata.ducklake_schema SET path='test/main/' WHERE catalog_id=0;
+DETACH fixture_metadata;
+
+statement ok
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/concurrent_insert_orphan_cleanup', DATA_INLINING_ROW_LIMIT 0, CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.tbl(id INTEGER);
@@ -23,7 +34,7 @@ INSERT INTO ducklake.tbl SELECT i FROM range(10) t(i);
 
 # Add a known orphan before the concurrent workload starts.
 statement ok
-COPY ducklake.tbl TO '{DATA_PATH}/concurrent_insert_orphan_cleanup/main/tbl/orphan.parquet';
+COPY ducklake.tbl TO '{DATA_PATH}/concurrent_insert_orphan_cleanup/test/main/tbl/orphan.parquet';
 
 query I
 SELECT count(*) FROM ducklake_delete_orphaned_files('ducklake', cleanup_all => true, dry_run => true);

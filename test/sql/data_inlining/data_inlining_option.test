@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_inlining_setting.db,main,{TEST_DIR}/ducklake_inlining_setting_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_inlining_setting.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_inlining_setting_files', METADATA_CATALOG 'ducklake_metadata')
+ATTACH 'ducklake:{TEST_DIR}/ducklake_inlining_setting.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_inlining_setting_files', METADATA_CATALOG 'ducklake_metadata', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.test(i INTEGER, j INTEGER);
@@ -35,7 +41,7 @@ DETACH ducklake;
 
 # the option is persisted across restarts
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_inlining_setting.db' AS ducklake
+ATTACH 'ducklake:{TEST_DIR}/ducklake_inlining_setting.db' AS ducklake (CATALOG_ID 0);
 
 statement ok
 INSERT INTO ducklake.test VALUES (5, 5);

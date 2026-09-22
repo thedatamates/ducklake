@@ -8,8 +8,14 @@ require parquet
 
 require httpfs
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_encryption.db,main,{TEST_DIR}/ducklake_encryption_files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_encryption.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_encryption_files', ENCRYPTED)
+ATTACH 'ducklake:{TEST_DIR}/ducklake_encryption.db' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_encryption_files', ENCRYPTED, CATALOG_ID 0);
 
 statement ok
 BEGIN
@@ -69,7 +75,7 @@ statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_encryption.db' AS ducklake
+ATTACH 'ducklake:{TEST_DIR}/ducklake_encryption.db' AS ducklake(CATALOG_ID 0);
 
 query II
 SELECT COUNT(*), SUM(id) FROM ducklake.test

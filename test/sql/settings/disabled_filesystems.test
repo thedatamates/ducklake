@@ -6,8 +6,14 @@ require ducklake
 
 require httpfs
 
+foreach fixture_path,fixture_schema,fixture_data_path :memory:,main,s3://any-bucket/data/
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake::memory:' AS ducklake (DATA_PATH 's3://any-bucket/data/')
+ATTACH 'ducklake::memory:' AS ducklake (DATA_PATH 's3://any-bucket/data/', CATALOG_ID 0);
 
 statement ok
 USE ducklake

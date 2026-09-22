@@ -6,15 +6,20 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
 # No DATA_INLINING_ROW_LIMIT override: the catalog uses the default (10), so inlined file deletes are active.
 # This is the path the shipped full_file_delete_stats.test cannot reach because it disables inlining.
-statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/full_file_delete_stats_default_inlining')
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/full_file_delete_stats_default_inlining
 
+include test/fixtures/managed_catalog.sql
+
+endloop
+
+statement ok
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/full_file_delete_stats_default_inlining', CATALOG_ID 0);
 # A whole-file delete at or below the inline limit still drops the data file before considering an
 # inlined delete, and decrements table stats to zero.
 statement ok

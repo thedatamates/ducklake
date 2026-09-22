@@ -6,17 +6,23 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
+
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{TEST_DIR}/comment_unrelated_tags/
+
+include test/fixtures/managed_catalog.sql
+
+endloop
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{TEST_DIR}/comment_unrelated_tags/')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{TEST_DIR}/comment_unrelated_tags/', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.tbl (i INT);
 
 # manually insert a tag with a different key ('owner') for the table
 statement ok
-INSERT INTO __ducklake_metadata_ducklake.ducklake_tag VALUES (1, 2, NULL, 'owner', 'alice');
+INSERT INTO __ducklake_metadata_ducklake.ducklake_tag VALUES (0, 1, 2, NULL, 'owner', 'alice');
 
 # now set a comment on the table
 statement ok
@@ -42,7 +48,7 @@ owner	alice	true
 
 # verify the same for column-level tags
 statement ok
-INSERT INTO __ducklake_metadata_ducklake.ducklake_column_tag VALUES (1, 0, 4, NULL, 'pii', 'true');
+INSERT INTO __ducklake_metadata_ducklake.ducklake_column_tag VALUES (0, 1, 0, 4, NULL, 'pii', 'true');
 
 statement ok
 COMMENT ON COLUMN ducklake.tbl.i IS 'col comment';

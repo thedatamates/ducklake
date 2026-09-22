@@ -9,7 +9,7 @@ defaults:
 
 jobs:
   ducklake-config-tests:
-    name: DuckDB Tests with DuckLake + DuckDB Back-End
+    name: Managed catalog SQL regression tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -62,4 +62,4 @@ jobs:
       env:
         DUCKDB_TPCH_ANSWERS_DIR: ${{ github.workspace }}/duckdb/extension/tpch/dbgen/answers
       run: |
-        build/release/test/unittest --test-config test/configs/attach_ducklake.json --test-dir duckdb
+        build/release/test/unittest --test-config test/configs/managed.json --test-dir ./ "~[.]test/sql/*"

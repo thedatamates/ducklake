@@ -10,8 +10,14 @@ statement ok
 set allow_persistent_secrets=false;
 
 # Next two statement ensure ducklake is loadable also
+foreach fixture_path,fixture_schema,fixture_data_path random_file.ducklake,main,random_file.ducklake.files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:random_file.ducklake' AS db;
+ATTACH 'ducklake:random_file.ducklake' AS db(CATALOG_ID 0);
 
 statement ok
 DETACH db;

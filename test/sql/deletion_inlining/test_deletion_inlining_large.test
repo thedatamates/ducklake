@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/deletion_inlining_large
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/deletion_inlining_large', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 3000)
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/deletion_inlining_large', METADATA_CATALOG 'ducklake_meta', DATA_INLINING_ROW_LIMIT 3000, CATALOG_ID 0);
 
 statement ok
 USE ducklake
@@ -76,7 +82,7 @@ SELECT COUNT(*) FROM GLOB('{DATA_PATH}/deletion_inlining_large/**/*-delete.*')
 0
 
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_delete_1
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_delete_0_1
 ----
 2950
 
@@ -89,7 +95,7 @@ SELECT COUNT(*) >= 1 FROM GLOB('{DATA_PATH}/deletion_inlining_large/**/*-delete.
 true
 
 query I
-SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_delete_1
+SELECT COUNT(*) FROM ducklake_meta.ducklake_inlined_delete_0_1
 ----
 0
 

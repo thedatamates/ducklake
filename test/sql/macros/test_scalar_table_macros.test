@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/test_defined_types
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_defined_types');
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_defined_types', CATALOG_ID 0);
 
 statement ok
 USE ducklake;
@@ -29,25 +35,28 @@ statement ok
 CREATE MACRO xt(a) as 1;
 
 # Check Macro Tables
-query IIIII
+# Metadata rows are scoped by catalog_id.
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	2	xt	3	NULL
-0	3	xt	4	NULL
+0	0	2	xt	3	NULL
+0	0	3	xt	4	NULL
 
-query IIIII
+# Metadata rows are scoped by catalog_id.
+query IIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-2	0	duckdb	SELECT * FROM test_tbl WHERE ((id >= a) OR ("name" = _name))	table
-3	0	duckdb	1	scalar
+0	2	0	duckdb	SELECT * FROM test_tbl WHERE ((id >= a) OR ("name" = _name))	table
+0	3	0	duckdb	1	scalar
 
 
-query IIIIIII
+# Metadata rows are scoped by catalog_id.
+query IIIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-2	0	0	a	unknown	NULL	unknown
-2	0	1	_name	unknown	NULL	unknown
-3	0	0	a	unknown	NULL	unknown
+0	2	0	0	a	unknown	NULL	unknown
+0	2	0	1	_name	unknown	NULL	unknown
+0	3	0	0	a	unknown	NULL	unknown
 
 query II
 FROM xt(5,'tom');

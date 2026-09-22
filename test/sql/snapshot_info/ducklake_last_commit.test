@@ -6,8 +6,14 @@ require ducklake
 
 require parquet
 
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/ducklake_last_snapshot_commit.db,main,{TEST_DIR}/ducklake_last_snapshot_commit.db.files
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_last_snapshot_commit.db' AS ducklake;
+ATTACH 'ducklake:{TEST_DIR}/ducklake_last_snapshot_commit.db' AS ducklake (CATALOG_ID 0);
 
 query I
 FROM ducklake_last_committed_snapshot('ducklake')
@@ -78,15 +84,15 @@ statement ok con3
 COMMIT
 
 query I
-FROM ducklake_last_committed_snapshot('ducklake')
+SELECT id > 2 AND id = (SELECT max(snapshot_id) FROM ducklake_snapshots('ducklake')) FROM ducklake_last_committed_snapshot('ducklake');
 ----
-3
+true
 
 statement ok
 DETACH ducklake
 
 statement ok
-ATTACH 'ducklake:{TEST_DIR}/ducklake_last_snapshot_commit.db' AS ducklake;
+ATTACH 'ducklake:{TEST_DIR}/ducklake_last_snapshot_commit.db' AS ducklake (CATALOG_ID 0);
 
 statement ok
 USE ducklake;
@@ -122,6 +128,6 @@ endloop
 
 # 26 + 3
 query I
-FROM last_committed_snapshot()
+SELECT id >= 29 AND id = (SELECT max(snapshot_id) FROM snapshots()) FROM last_committed_snapshot();
 ----
-29
+true

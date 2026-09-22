@@ -6,12 +6,18 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/metadata.db
 
 test-env DATA_PATH {TEST_DIR}
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION},main,{DATA_PATH}/attach_replace
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/attach_replace', METADATA_CATALOG 'x')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/attach_replace', METADATA_CATALOG 'x', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE ducklake.t1 (i INT);
@@ -26,15 +32,21 @@ SELECT * FROM ducklake.t1
 
 # attaching with the same name without REPLACE should fail
 statement error
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/attach_replace', METADATA_CATALOG 'x')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/attach_replace', METADATA_CATALOG 'x', CATALOG_ID 0);
 ----
 already exists
 
 # replace with a fresh ducklake - old table should be gone
-test-env DUCKLAKE_CONNECTION_2 {TEST_DIR}/{UUID}_2.db
+test-env DUCKLAKE_CONNECTION_2 {TEST_DIR}/metadata_2.db
+
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION_2},main,{DATA_PATH}/attach_replace_2
+
+include test/fixtures/managed_catalog.sql
+
+endloop
 
 statement ok
-ATTACH OR REPLACE 'ducklake:{DUCKLAKE_CONNECTION_2}' AS ducklake (DATA_PATH '{DATA_PATH}/attach_replace_2')
+ATTACH OR REPLACE 'ducklake:{DUCKLAKE_CONNECTION_2}' AS ducklake (DATA_PATH '{DATA_PATH}/attach_replace_2', CATALOG_ID 0);
 
 statement error
 SELECT * FROM ducklake.t1
@@ -53,12 +65,18 @@ SELECT * FROM ducklake.t2
 ----
 100
 
-test-env DUCKLAKE_CONNECTION_A {TEST_DIR}/{UUID}_a.db
+test-env DUCKLAKE_CONNECTION_A {TEST_DIR}/metadata_a.db
 
-test-env DUCKLAKE_CONNECTION_B {TEST_DIR}/{UUID}_b.db
+test-env DUCKLAKE_CONNECTION_B {TEST_DIR}/metadata_b.db
+
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION_A},main,{DATA_PATH}/replace_default_a
+
+include test/fixtures/managed_catalog.sql
+
+endloop
 
 statement ok
-ATTACH 'ducklake:{DUCKLAKE_CONNECTION_A}' AS test_replace (DATA_PATH '{DATA_PATH}/replace_default_a')
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION_A}' AS test_replace (DATA_PATH '{DATA_PATH}/replace_default_a', CATALOG_ID 0);
 
 statement ok
 CREATE TABLE test_replace.t1 (i INT);
@@ -71,8 +89,14 @@ SELECT * FROM test_replace.t1
 ----
 1
 
+foreach fixture_path,fixture_schema,fixture_data_path {DUCKLAKE_CONNECTION_B},main,{DATA_PATH}/replace_default_b
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
 statement ok
-ATTACH OR REPLACE 'ducklake:{DUCKLAKE_CONNECTION_B}' AS test_replace (DATA_PATH '{DATA_PATH}/replace_default_b')
+ATTACH OR REPLACE 'ducklake:{DUCKLAKE_CONNECTION_B}' AS test_replace (DATA_PATH '{DATA_PATH}/replace_default_b', CATALOG_ID 0);
 
 statement error
 SELECT * FROM test_replace.t1
