@@ -8,31 +8,31 @@ require parquet
 
 require icu
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
 
-test-env DATA_PATH __TEST_DIR__
+test-env DATA_PATH {TEST_DIR}
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/cleanup_old_files_global_option', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/cleanup_old_files_global_option')
 
-# snapshot 2
+# snapshot 1
 statement ok
 CREATE TABLE ducklake.test(i INTEGER)
 
-# snapshot 3
+# snapshot 2
 statement ok
 INSERT INTO ducklake.test FROM range(1000)
 
-# snapshot 4
+# snapshot 3
 statement ok
 DELETE FROM ducklake.test
 
-# snapshot 5
+# snapshot 4
 statement ok
 DROP TABLE ducklake.test
 
 statement ok
-CALL ducklake_expire_snapshots('ducklake', dry_run => false, versions => [3])
+CALL ducklake_expire_snapshots('ducklake', dry_run => false, versions => [2])
 
 statement ok
 CALL ducklake.set_option('delete_older_than', '1 millisecond')

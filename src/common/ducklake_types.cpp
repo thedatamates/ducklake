@@ -12,7 +12,7 @@ struct DefaultType {
 	LogicalTypeId id;
 };
 
-using ducklake_type_array = std::array<DefaultType, 31>;
+using ducklake_type_array = std::array<DefaultType, 34>;
 
 static constexpr const ducklake_type_array DUCKLAKE_TYPES {{{"boolean", LogicalTypeId::BOOLEAN},
                                                             {"int8", LogicalTypeId::TINYINT},
@@ -29,6 +29,7 @@ static constexpr const ducklake_type_array DUCKLAKE_TYPES {{{"boolean", LogicalT
                                                             {"float64", LogicalTypeId::DOUBLE},
                                                             {"decimal", LogicalTypeId::DECIMAL},
                                                             {"time", LogicalTypeId::TIME},
+                                                            {"time_ns", LogicalTypeId::TIME_NS},
                                                             {"date", LogicalTypeId::DATE},
                                                             {"timestamp", LogicalTypeId::TIMESTAMP},
                                                             {"timestamp_us", LogicalTypeId::TIMESTAMP},
@@ -36,6 +37,7 @@ static constexpr const ducklake_type_array DUCKLAKE_TYPES {{{"boolean", LogicalT
                                                             {"timestamp_ns", LogicalTypeId::TIMESTAMP_NS},
                                                             {"timestamp_s", LogicalTypeId::TIMESTAMP_SEC},
                                                             {"timestamptz", LogicalTypeId::TIMESTAMP_TZ},
+                                                            {"timestamptz_ns", LogicalTypeId::TIMESTAMP_TZ_NS},
                                                             {"timetz", LogicalTypeId::TIME_TZ},
                                                             {"interval", LogicalTypeId::INTERVAL},
                                                             {"varchar", LogicalTypeId::VARCHAR},
@@ -44,6 +46,7 @@ static constexpr const ducklake_type_array DUCKLAKE_TYPES {{{"boolean", LogicalT
                                                             {"struct", LogicalTypeId::STRUCT},
                                                             {"map", LogicalTypeId::MAP},
                                                             {"list", LogicalTypeId::LIST},
+                                                            {"null", LogicalTypeId::SQLNULL},
                                                             {"unknown", LogicalTypeId::UNKNOWN}}};
 
 static LogicalType ParseBaseType(const string &str) {
@@ -56,11 +59,11 @@ static LogicalType ParseBaseType(const string &str) {
 	if (StringUtil::CIEquals(str, "json")) {
 		return LogicalType::JSON();
 	}
-
+	if (StringUtil::CIEquals(str, "variant")) {
+		return LogicalType::VARIANT();
+	}
 	if (StringUtil::CIEquals(str, "geometry")) {
-		LogicalType geo_type(LogicalTypeId::BLOB);
-		geo_type.SetAlias("GEOMETRY");
-		return geo_type;
+		return LogicalType::GEOMETRY();
 	}
 
 	throw InvalidInputException("Failed to parse DuckLake type - unsupported type '%s'", str);
@@ -75,14 +78,9 @@ static string ToStringBaseType(const LogicalType &type) {
 	throw InvalidInputException("Failed to convert DuckDB type to DuckLake - unsupported type %s", type);
 }
 
-// Only GEOMETRY type needs special handling, to cast to WKB_BLOB
-bool DuckLakeTypes::IsGeoType(const LogicalType &type) {
-	return type.HasAlias() && StringUtil::CIEquals(type.GetAlias(), "GEOMETRY") &&
-	       (type.id() == LogicalTypeId::BLOB || type.id() == LogicalTypeId::USER);
-}
-
 bool DuckLakeTypes::RequiresCast(const LogicalType &type) {
-	return TypeVisitor::Contains(type, IsGeoType);
+	// There are no types that requires casts as of DuckDB v1.5
+	return false;
 }
 
 bool DuckLakeTypes::RequiresCast(const vector<LogicalType> &types) {
@@ -95,14 +93,8 @@ bool DuckLakeTypes::RequiresCast(const vector<LogicalType> &types) {
 }
 
 LogicalType DuckLakeTypes::GetCastedType(const LogicalType &type) {
-	return TypeVisitor::VisitReplace(type, [](const LogicalType &type) {
-		if (IsGeoType(type)) {
-			LogicalType wkb_type(LogicalTypeId::BLOB);
-			wkb_type.SetAlias("WKB_BLOB");
-			return wkb_type;
-		}
-		return type;
-	});
+	// There are no types that requires casts as of DuckDB v1.5
+	return type;
 }
 
 LogicalType DuckLakeTypes::FromString(const string &type) {
@@ -125,11 +117,8 @@ string DuckLakeTypes::ToString(const LogicalType &type) {
 		if (type.IsJSONType()) {
 			return "json";
 		}
-		if (IsGeoType(type)) {
-			return "geometry";
-		}
-		if (type.id() == LogicalTypeId::USER) {
-			const auto type_name = UserType::GetTypeName(type);
+		if (type.id() == LogicalTypeId::UNBOUND) {
+			const auto type_name = type.GetAlias();
 			if (StringUtil::Lower(type_name) == "json") {
 				return "json";
 			}
@@ -138,7 +127,14 @@ string DuckLakeTypes::ToString(const LogicalType &type) {
 	}
 	switch (type.id()) {
 	case LogicalTypeId::STRUCT:
+		if (StructType::GetChildCount(type) == 0) {
+			throw InvalidInputException("Failed to convert DuckDB type to DuckLake - unsupported type %s", type);
+		}
 		return "struct";
+	case LogicalTypeId::VARIANT:
+		return "variant";
+	case LogicalTypeId::GEOMETRY:
+		return "geometry";
 	case LogicalTypeId::LIST:
 		return "list";
 	case LogicalTypeId::MAP:
@@ -155,15 +151,19 @@ string DuckLakeTypes::ToString(const LogicalType &type) {
 	}
 }
 
-void DuckLakeTypes::CheckSupportedType(const LogicalType &type) {
-	TypeVisitor::VisitReplace(type, [](const LogicalType &type) {
+void DuckLakeTypes::CheckSupportedType(const LogicalType &type, DuckLakeVersion version) {
+	TypeVisitor::VisitReplace(type, [version](const LogicalType &type) {
+		if (type.id() == LogicalTypeId::SQLNULL && version < DuckLakeVersion::V1_1_DEV_1) {
+			ThrowUnsupportedByVersion(version, "the NULL type");
+		}
 		DuckLakeTypes::ToString(type);
 		return type;
 	});
+}
 
-	// Special case for now, only allow GEOMETRY as top-level type
-	if (!IsGeoType(type) && TypeVisitor::Contains(type, IsGeoType)) {
-		throw InvalidInputException("GEOMETRY type is only supported as a top-level type");
+void DuckLakeTypes::CheckSupportedTypes(const ColumnList &columns, DuckLakeVersion version) {
+	for (auto &col : columns.Logical()) {
+		CheckSupportedType(col.Type(), version);
 	}
 }
 

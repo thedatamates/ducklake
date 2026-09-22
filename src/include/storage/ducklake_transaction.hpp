@@ -9,10 +9,13 @@
 #pragma once
 
 #include "ducklake_macro_entry.hpp"
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/main/database.hpp"
 #include "common/ducklake_data_file.hpp"
 #include "common/ducklake_snapshot.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/common/types/value_map.hpp"
+#include "duckdb/main/client_context_state.hpp"
 #include "duckdb/main/connection.hpp"
 #include "duckdb/transaction/transaction.hpp"
 #include "storage/ducklake_catalog_set.hpp"
@@ -23,12 +26,14 @@ namespace duckdb {
 struct NewMacroInfo;
 class DuckLakeCatalog;
 class DuckLakeCatalogSet;
+class DuckLakeInitializer;
 class DuckLakeMetadataManager;
 class DuckLakeSchemaEntry;
 class DuckLakeTableEntry;
 class DuckLakeViewEntry;
 struct DuckLakeNewGlobalStats;
 struct DuckLakeTableStats;
+struct SnapshotChangeInfo;
 struct SnapshotChangeInformation;
 struct TransactionChangeInformation;
 struct NewDataInfo;
@@ -37,21 +42,148 @@ struct NewNameMapInfo;
 struct CompactionInformation;
 struct DuckLakePath;
 struct DuckLakeCommitState;
+struct DuckLakeSchemaCacheEntry;
+class DuckLakeSchemaPinState;
+class DuckLakeFieldId;
+class LocalTableChangeIterationHelper;
+class DuckLakeTransactionState;
+
+//! Marks connections DuckLake opens internally
+class DuckLakeInternalConnectionState : public ClientContextState {
+public:
+	static constexpr const char *KEY = "ducklake_internal_connection";
+};
+
+struct FlushedInlinedTableInfo {
+	DuckLakeInlinedTableInfo inlined_table;
+	idx_t flush_snapshot_id;
+};
+
+struct DroppedDataFileStats {
+	idx_t row_count = 0;
+	idx_t file_size_bytes = 0;
+};
 
 struct LocalTableDataChanges {
 	vector<DuckLakeDataFile> new_data_files;
 	unique_ptr<DuckLakeInlinedData> new_inlined_data;
-	unordered_map<string, DuckLakeDeleteFile> new_delete_files;
+	unordered_map<string, vector<DuckLakeDeleteFile>> new_delete_files;
 	unordered_map<string, unique_ptr<DuckLakeInlinedDataDeletes>> new_inlined_data_deletes;
+	unique_ptr<DuckLakeInlinedFileDeletes> new_inlined_file_deletes;
 	vector<DuckLakeCompactionEntry> compactions;
 	bool IsEmpty() const;
+};
+
+struct DuckLakeNewGlobalStats {
+	DuckLakeTableStats stats;
+	bool initialized = false;
+};
+
+struct LocalTableChanges {
+public:
+	void Clear();
+	bool HasChanges() const;
+	LocalTableChangeIterationHelper Changes() const;
+	void CleanupFiles(DatabaseInstance &db);
+	void CleanupFiles(ClientContext &context, TableIndex table_id);
+	bool HasTransactionLocalInserts(TableIndex table_id) const;
+	bool HasTransactionInlinedData(TableIndex table_id) const;
+	vector<DuckLakeDataFile> GetTransactionLocalFiles(TableIndex table_id) const;
+	shared_ptr<DuckLakeInlinedData> GetTransactionLocalInlinedData(ClientContext &context, TableIndex table_id) const;
+	void DropTransactionLocalFile(ClientContext &context, TableIndex table_id, const string &path);
+	void AppendFiles(TableIndex table_id, vector<DuckLakeDataFile> files);
+	void AppendDeleteFiles(TableIndex table_id, const string &data_file_path, vector<DuckLakeDeleteFile> files);
+	void AppendInlinedData(ClientContext &context, TableIndex table_id, unique_ptr<DuckLakeInlinedData> new_data);
+	void AddNewInlinedDeletes(TableIndex table_id, const string &table_name, set<idx_t> new_deletes);
+	void DeleteFromLocalInlinedData(ClientContext &context, TableIndex table_id, set<idx_t> new_deletes);
+	void AddColumnToLocalInlinedData(ClientContext &context, TableIndex table_id, const LogicalType &new_column_type,
+	                                 FieldIndex new_field_index, const Value &default_value);
+	void RemoveColumnFromLocalInlinedData(ClientContext &context, TableIndex table_id,
+	                                      LogicalIndex removed_column_index, const DuckLakeFieldId &field_id);
+	optional_ptr<DuckLakeInlinedDataDeletes> GetInlinedDeletes(TableIndex table_id, const string &table_name) const;
+	void AddNewInlinedFileDeletes(TableIndex table_id, idx_t file_id, set<idx_t> new_deletes);
+	void AddCompaction(TableIndex table_id, DuckLakeCompactionEntry entry);
+	bool HasLocalDeletes(TableIndex table_id) const;
+	bool HasLocalDeleteForFile(TableIndex table_id, const string &path) const;
+	bool HasAnyLocalChanges(TableIndex table_id) const;
+
+	void GetLocalDeleteForFile(TableIndex table_id, const string &path, DuckLakeFileData &result) const;
+	bool HasLocalInlinedFileDeletes(TableIndex table_id) const;
+
+	void GetLocalInlinedFileDeletesForFile(TableIndex table_id, idx_t file_id, set<idx_t> &result) const;
+
+	void TransactionLocalDelete(ClientContext &context, TableIndex table_id, const string &data_file_path,
+	                            DuckLakeDeleteFile delete_file);
+	void AddDeletes(ClientContext &context, TableIndex table_id, vector<DuckLakeDeleteFile> files);
+	static void AddDeletesToMap(ClientContext &context, vector<DuckLakeDeleteFile> new_deletes,
+	                            unordered_map<string, vector<DuckLakeDeleteFile>> &delete_file_map);
+
+private:
+	mutable mutex lock;
+	map<TableIndex, LocalTableDataChanges> changes;
+};
+
+class LocalTableChangeIterationHelper {
+public:
+	LocalTableChangeIterationHelper(mutex &local_changes_lock, const map<TableIndex, LocalTableDataChanges> &changes);
+
+private:
+	unique_lock<mutex> lock;
+	const map<TableIndex, LocalTableDataChanges> &changes;
+
+private:
+	struct LocalTableChangeIteratorEntry {
+		friend class LocalTableChangeIterationHelper;
+
+	public:
+		LocalTableChangeIteratorEntry();
+		TableIndex GetTableIndex() const;
+		const LocalTableDataChanges &GetTableChanges() const;
+
+	private:
+		TableIndex table_id;
+		optional_ptr<const LocalTableDataChanges> changes;
+	};
+	class LocalTableChangeIterator {
+	public:
+		explicit LocalTableChangeIterator(map<TableIndex, LocalTableDataChanges>::const_iterator it,
+		                                  map<TableIndex, LocalTableDataChanges>::const_iterator end_it);
+		map<TableIndex, LocalTableDataChanges>::const_iterator it;
+		map<TableIndex, LocalTableDataChanges>::const_iterator end_it;
+		LocalTableChangeIteratorEntry entry;
+
+	public:
+		LocalTableChangeIterator &operator++();
+		bool operator!=(const LocalTableChangeIterator &other) const;
+		const LocalTableChangeIteratorEntry &operator*() const;
+	};
+
+public:
+	LocalTableChangeIterator begin() { // NOLINT: match stl API
+		return LocalTableChangeIterator(changes.begin(), changes.end());
+	}
+	LocalTableChangeIterator end() { // NOLINT: match stl API
+		return LocalTableChangeIterator(changes.end(), changes.end());
+	}
 };
 
 struct SnapshotAndStats {
 	vector<DuckLakeGlobalStatsInfo> stats;
 	DuckLakeSnapshot snapshot;
 };
+
+struct DuckLakeRetryConfig {
+	idx_t max_retry_count = 10;
+	idx_t retry_wait_ms = 100;
+	double retry_backoff = 1.5;
+
+	static DuckLakeRetryConfig FromContext(ClientContext &context);
+};
+
 class DuckLakeTransaction : public Transaction, public enable_shared_from_this<DuckLakeTransaction> {
+	friend class DuckLakeTransactionState;
+	friend class DuckLakeInitializer;
+
 public:
 	DuckLakeTransaction(DuckLakeCatalog &ducklake_catalog, TransactionManager &manager, ClientContext &context);
 	~DuckLakeTransaction() override;
@@ -61,6 +193,9 @@ public:
 	virtual void Commit();
 	virtual void Rollback();
 
+	//! Returns true if `message` indicates a retryable conflict (PK/unique/conflict/concurrent).
+	static bool RetryOnError(const string &message);
+
 	DuckLakeCatalog &GetCatalog() {
 		return ducklake_catalog;
 	}
@@ -68,16 +203,17 @@ public:
 		return *metadata_manager;
 	}
 
-	DuckLakeSnapshotCommit &GetCommitInfo() {
-		return commit_info;
-	}
+	DuckLakeSnapshotCommit &GetCommitInfo();
 	unique_ptr<QueryResult> Query(DuckLakeSnapshot snapshot, string query);
 	unique_ptr<QueryResult> Query(string query);
-	//! Execute a metadata query on a short-lived connection with a fresh snapshot.
-	unique_ptr<QueryResult> QueryFresh(DuckLakeSnapshot snapshot, string query);
-	//! Execute a metadata query on a short-lived connection with a fresh snapshot.
-	unique_ptr<QueryResult> QueryFresh(string query);
+	//! Execute SQL on the metadata connection without placeholder substitution or metadata-manager wrapping.
+	unique_ptr<QueryResult> ExecuteRaw(string query);
 	Connection &GetConnection();
+
+	//! Keep a schema cache entry alive for as long as this transaction lives. Transaction-local catalog entries hold
+	//! bare references into the cached catalog set, and those references are read again at commit time, so the entry
+	//! must not be evicted from the ObjectCache in between.
+	void PinSchemaCacheEntry(shared_ptr<DuckLakeSchemaCacheEntry> entry);
 
 	DuckLakeSnapshot GetSnapshot();
 	DuckLakeSnapshot GetSnapshot(optional_ptr<BoundAtClause> at_clause,
@@ -99,37 +235,52 @@ public:
 	optional_ptr<DuckLakeCatalogSet> GetTransactionLocalEntries(CatalogType type, const string &schema_name);
 	optional_ptr<CatalogEntry> GetTransactionLocalEntry(CatalogType catalog_type, const string &schema_name,
 	                                                    const string &entry_name);
-	vector<DuckLakeDataFile> GetTransactionLocalFiles(TableIndex table_id);
-	shared_ptr<DuckLakeInlinedData> GetTransactionLocalInlinedData(TableIndex table_id);
+	vector<DuckLakeDataFile> GetTransactionLocalFiles(TableIndex table_id) const;
+	shared_ptr<DuckLakeInlinedData> GetTransactionLocalInlinedData(TableIndex table_id) const;
 	void DropTransactionLocalFile(TableIndex table_id, const string &path);
-	bool HasTransactionLocalChanges(TableIndex table_id) const;
+	bool HasTransactionLocalInserts(TableIndex table_id) const;
 	bool HasTransactionInlinedData(TableIndex table_id) const;
 	void AppendFiles(TableIndex table_id, vector<DuckLakeDataFile> files);
 	void AddDeletes(TableIndex table_id, vector<DuckLakeDeleteFile> files);
 	void AddCompaction(TableIndex table_id, DuckLakeCompactionEntry entry);
 
 	MappingIndex AddNameMap(unique_ptr<DuckLakeNameMap> name_map);
-	const DuckLakeNameMap &GetMappingById(MappingIndex mapping_id);
-	NewNameMapInfo GetNewNameMaps(DuckLakeCommitState &commit_state);
+	shared_ptr<const DuckLakeNameMap> GetMappingById(MappingIndex mapping_id);
+	//! Queue a name map cache invalidation that should only be applied after this transaction commits.
+	void DeferNameMapCacheInvalidation(MappingIndex mapping_id);
 
 	void AppendInlinedData(TableIndex table_id, unique_ptr<DuckLakeInlinedData> collection);
+	void SetRequiresNewInlinedTable(bool requires_new);
+	bool GetRequiresNewInlinedTable() const;
 	void AddNewInlinedDeletes(TableIndex table_id, const string &table_name, set<idx_t> new_deletes);
 	void DeleteFromLocalInlinedData(TableIndex table_id, set<idx_t> new_deletes);
-	optional_ptr<DuckLakeInlinedDataDeletes> GetInlinedDeletes(TableIndex table_id, const string &table_name);
-	vector<DuckLakeDeletedInlinedDataInfo> GetNewInlinedDeletes(DuckLakeCommitState &commit_state);
+	void AddColumnToLocalInlinedData(TableIndex table_id, const LogicalType &new_column_type,
+	                                 FieldIndex new_field_index, const Value &default_value = Value());
+	void RemoveColumnFromLocalInlinedData(TableIndex table_id, LogicalIndex removed_column_index,
+	                                      const DuckLakeFieldId &field_id);
+	optional_ptr<DuckLakeInlinedDataDeletes> GetInlinedDeletes(TableIndex table_id, const string &table_name) const;
+
+	//! Add inlined file deletions (deletions from parquet files stored in metadata)
+	void AddNewInlinedFileDeletes(TableIndex table_id, idx_t file_id, set<idx_t> new_deletes);
+	//! Get all inlined file deletions for commit
 
 	void DropSchema(DuckLakeSchemaEntry &schema);
 	void DropTable(DuckLakeTableEntry &table);
 	void DropView(DuckLakeViewEntry &view);
 	void DropScalarMacro(DuckLakeScalarMacroEntry &macro);
 	void DropTableMacro(DuckLakeTableMacroEntry &macro);
-	void DropFile(TableIndex table_id, DataFileIndex data_file_id, string path);
+	void DropFile(TableIndex table_id, DataFileIndex data_file_id, string path, idx_t row_count, idx_t file_size_bytes);
+	//! Record that a delete predicate was evaluated against a table, even if no rows matched
+	void MarkDeleteAttempted(TableIndex table_id);
 
 	void DeleteSnapshots(const vector<DuckLakeSnapshotInfo> &snapshots);
 	void DeleteInlinedData(const DuckLakeInlinedTableInfo &inlined_table);
+	//! Delete inlined data rows with begin_snapshot <= flush_snapshot_id
+	void DeleteFlushedInlinedData(const DuckLakeInlinedTableInfo &inlined_table, idx_t flush_snapshot_id);
+	//! Marks that inlined data have been deleted in a flush if retries are necessary
+	void MarkInlinedDataForDeletion(DuckLakeInlinedTableInfo inlined_table, idx_t flush_snapshot_id);
 
-	bool SchemaChangesMade();
-	bool ChangesMade();
+	bool ChangesMade() const;
 	idx_t GetLocalCatalogId();
 	static bool IsTransactionLocal(idx_t id) {
 		return id >= DuckLakeConstants::TRANSACTION_LOCAL_ID_START;
@@ -138,33 +289,38 @@ public:
 
 	void SetCommitMessage(const DuckLakeSnapshotCommit &option);
 
-	string GetDefaultSchemaName();
+	Identifier GetDefaultSchemaName();
 
-	bool HasLocalDeletes(TableIndex table_id);
-	void GetLocalDeleteForFile(TableIndex table_id, const string &path, DuckLakeFileData &delete_file);
+	bool HasLocalDeletes(TableIndex table_id) const;
+	bool HasLocalDeleteForFile(TableIndex table_id, const string &path) const;
+	void GetLocalDeleteForFile(TableIndex table_id, const string &path, DuckLakeFileData &delete_file) const;
 	void TransactionLocalDelete(TableIndex table_id, const string &data_path, DuckLakeDeleteFile delete_file);
 
+	bool HasLocalInlinedFileDeletes(TableIndex table_id) const;
+	void GetLocalInlinedFileDeletesForFile(TableIndex table_id, idx_t file_id, set<idx_t> &result) const;
+
 	bool HasDroppedFiles() const;
+	const unordered_map<string, DataFileIndex> &GetDroppedFiles() const;
+	const set<TableIndex> &GetTablesDeletedFrom() const;
+	const set<TableIndex> &GetTablesDeleteAttempted() const;
+	const vector<FlushedInlinedTableInfo> &GetFlushedInlinedTables() const;
+	const DuckLakeNameMapSet &GetNewNameMaps() const {
+		return new_name_maps;
+	}
 	bool FileIsDropped(const string &path) const;
+	//! Check if there are any uncommitted changes for this table (inserts, deletes, or dropped files)
+	bool HasAnyLocalChanges(TableIndex table_id) const;
 
 	string GenerateUUID() const;
 	static string GenerateUUIDv7();
 
-	const set<TableIndex> &GetDroppedTables() {
-		return dropped_tables;
-	}
-	const set<MacroIndex> &GetDroppedScalarMacros() {
-		return dropped_scalar_macros;
-	}
-	const set<MacroIndex> &GetDroppedTableMacros() {
-		return dropped_table_macros;
-	}
-	const set<TableIndex> &GetRenamedTables() {
-		return renamed_tables;
-	}
-	const case_insensitive_map_t<unique_ptr<DuckLakeCatalogSet>> &GetNewTables() {
-		return new_tables;
-	}
+	const LocalTableChanges &GetLocalChanges() const;
+	const set<TableIndex> &GetDroppedTables();
+	const set<TableIndex> &GetDroppedViews();
+	const set<MacroIndex> &GetDroppedScalarMacros();
+	const set<MacroIndex> &GetDroppedTableMacros();
+	const set<TableIndex> &GetRenamedTables();
+	const case_insensitive_map_t<unique_ptr<DuckLakeCatalogSet>> &GetNewTables();
 	//! Returns the current version of the catalog:
 	//! If there are no uncommitted changes, this is the schema version of the snapshot.
 	//! Otherwise, it is an id that is incremented whenever the schema changes (not stored between restarts)
@@ -175,55 +331,45 @@ protected:
 		this->metadata_manager = std::move(metadata_manager);
 	}
 
+public:
+	void RunCommitLoop(DuckLakeSnapshot transaction_snapshot, const TransactionChangeInformation &transaction_changes,
+	                   const DuckLakeRetryConfig &retry_config);
+	void ApplyServerSideCommit(idx_t schema_version);
+	//! Post-commit cleanup of empty inlined-data tables superseded by later schema versions.
+	void DropEmptySupersededInlinedTablesClientSide();
+
+	static DuckLakeGlobalStatsInfo ConvertNewGlobalStats(TableIndex table_id,
+	                                                     const DuckLakeNewGlobalStats &new_global_stats);
+
+	static DuckLakeFileInfo BuildDataFileInfo(const DuckLakeDataFile &file, DuckLakeSnapshot &commit_snapshot,
+	                                          TableIndex table_id, optional_idx row_id_start);
+
+	static void AddTableChanges(TableIndex table_id, const LocalTableDataChanges &table_changes,
+	                            TransactionChangeInformation &changes);
+
 private:
-	void CleanupFiles();
 	void FlushChanges();
-	void FlushSettingChanges();
-	string CommitChanges(DuckLakeCommitState &commit_state, TransactionChangeInformation &transaction_changes,
-	                     optional_ptr<vector<DuckLakeGlobalStatsInfo>> stats);
-	void CommitCompaction(DuckLakeSnapshot &commit_snapshot, TransactionChangeInformation &transaction_changes);
-	void FlushDrop(DuckLakeSnapshot commit_snapshot, const string &metadata_table_name, const string &id_name,
-	               unordered_set<idx_t> &dropped_entries);
-	vector<DuckLakeSchemaInfo> GetNewSchemas(DuckLakeCommitState &commit_state);
-	NewTableInfo GetNewTables(DuckLakeCommitState &commit_state, TransactionChangeInformation &transaction_changes);
-	NewMacroInfo GetNewMacros(DuckLakeCommitState &commit_state, TransactionChangeInformation &transaction_changes);
-	DuckLakePartitionInfo GetNewPartitionKey(DuckLakeCommitState &commit_state, DuckLakeTableEntry &tabletable_id);
-	DuckLakeTableInfo GetNewTable(DuckLakeCommitState &commit_state, DuckLakeTableEntry &table);
-	DuckLakeViewInfo GetNewView(DuckLakeCommitState &commit_state, DuckLakeViewEntry &view);
-	void FlushNewPartitionKey(DuckLakeSnapshot &commit_snapshot, DuckLakeTableEntry &table);
-	DuckLakeFileInfo GetNewDataFile(DuckLakeDataFile &file, DuckLakeSnapshot &commit_snapshot, TableIndex table_id,
-	                                optional_idx row_id_start);
-	NewDataInfo GetNewDataFiles(string &batch_query, DuckLakeCommitState &commit_state,
-	                            optional_ptr<vector<DuckLakeGlobalStatsInfo>> stats);
-	vector<DuckLakeDeleteFileInfo> GetNewDeleteFiles(const DuckLakeCommitState &commit_state,
-	                                                 set<DataFileIndex> &overwritten_delete_files) const;
-	string UpdateGlobalTableStats(TableIndex table_id, const DuckLakeNewGlobalStats &new_stats);
-	SnapshotAndStats CheckForConflicts(DuckLakeSnapshot transaction_snapshot,
-	                                   const TransactionChangeInformation &changes);
-	void CheckForConflicts(const TransactionChangeInformation &changes, const SnapshotChangeInformation &other_changes,
-	                       DuckLakeSnapshot transaction_snapshot);
-	string WriteSnapshotChanges(DuckLakeCommitState &commit_state, TransactionChangeInformation &changes);
+	void FlushNameMapCacheInvalidations();
+	//! Puts back the config options this transaction replaced in the catalog
+	void UndoConfigOptions();
+	static DuckLakePartitionInfo GetNewPartitionKey(DuckLakeCommitState &commit_state, DuckLakeTableEntry &table);
+	static DuckLakeSortInfo GetNewSortKey(DuckLakeCommitState &commit_state, DuckLakeTableEntry &table);
+	static DuckLakeTableInfo GetNewTable(DuckLakeCommitState &commit_state, DuckLakeTableEntry &table);
+	static DuckLakeViewInfo GetNewView(DuckLakeCommitState &commit_state, DuckLakeViewEntry &view);
+	static DuckLakeDeleteFileInfo GetNewDeleteFile(TableIndex table_id, const DuckLakeCommitState &commit_state,
+	                                               const DuckLakeDeleteFile &file);
 	//! Return the set of changes made by this transaction
-	TransactionChangeInformation GetTransactionChanges();
-	void GetNewTableInfo(DuckLakeCommitState &commit_state, DuckLakeCatalogSet &catalog_set,
-	                     reference<CatalogEntry> table_entry, NewTableInfo &result,
-	                     TransactionChangeInformation &transaction_changes);
-	void GetNewMacroInfo(DuckLakeCommitState &commit_state, reference<CatalogEntry> macro_entry, NewMacroInfo &result);
-	void GetNewViewInfo(DuckLakeCommitState &commit_state, DuckLakeCatalogSet &catalog_set,
-	                    reference<CatalogEntry> table_entry, NewTableInfo &result,
-	                    TransactionChangeInformation &transaction_changes);
-	CompactionInformation GetCompactionChanges(DuckLakeSnapshot &commit_snapshot, CompactionType type);
-	void ConfigureMetadataSearchPath(Connection &connection);
-	string ExpandMetadataQuery(string query) const;
+	TransactionChangeInformation GetTransactionChanges() const;
 
 	void AlterEntryInternal(DuckLakeTableEntry &old_entry, unique_ptr<CatalogEntry> new_entry);
 	void AlterEntryInternal(DuckLakeViewEntry &old_entry, unique_ptr<CatalogEntry> new_entry);
-	void AddTableChanges(TableIndex table_id, const LocalTableDataChanges &table_changes,
-	                     TransactionChangeInformation &changes);
+	case_insensitive_map_t<unique_ptr<DuckLakeCatalogSet>> &GetNewMacroMap(CatalogType type);
+
+	// Invoked at transaction completion, invalidates all schema cache entries referenced by this transaction.
+	void ClearSchemaCachePins();
 
 private:
 	DuckLakeCatalog &ducklake_catalog;
-	DuckLakeSnapshotCommit commit_info;
 	DatabaseInstance &db;
 	unique_ptr<DuckLakeMetadataManager> metadata_manager;
 	mutex connection_lock;
@@ -232,29 +378,22 @@ private:
 	mutex snapshot_lock;
 	unique_ptr<DuckLakeSnapshot> snapshot;
 	idx_t local_catalog_id;
-	//! New tables added by this transaction
-	case_insensitive_map_t<unique_ptr<DuckLakeCatalogSet>> new_tables;
-	set<TableIndex> dropped_tables;
-
-	//! New macros added by this transaction
-	case_insensitive_map_t<unique_ptr<DuckLakeCatalogSet>> new_macros;
-	set<MacroIndex> dropped_scalar_macros;
-	set<MacroIndex> dropped_table_macros;
-
-	set<TableIndex> renamed_tables;
-	set<TableIndex> dropped_views;
-	unordered_map<string, DataFileIndex> dropped_files;
-	set<TableIndex> tables_deleted_from;
-	//! Schemas added by this transaction
-	unique_ptr<DuckLakeCatalogSet> new_schemas;
-	map<SchemaIndex, reference<DuckLakeSchemaEntry>> dropped_schemas;
-	//! Local changes made to tables
-	mutex table_data_changes_lock;
-	map<TableIndex, LocalTableDataChanges> table_data_changes;
+	//! Set when this transaction inlines into a table that does not yet have an inlined-data table
+	atomic<bool> requires_new_inlined_table {false};
+	//! Schema cache entries referenced by this transaction's catalog entries. These pins keep transaction-local
+	//! parent references valid even if another transaction invalidates the global object-cache entry.
+	unique_ptr<DuckLakeSchemaPinState> schema_pins;
+	//! Per-transaction mutable change state (new/dropped/renamed entries, local file changes, flushed
+	//! inlined tables) and the Commit loop. Owns the data formerly held directly on the transaction.
+	unique_ptr<DuckLakeTransactionState> state;
 	//! Snapshot cache for the AT (...) conditions that are referenced in the transaction
 	value_map_t<DuckLakeSnapshot> snapshot_cache;
 	//! New set of transaction-local name maps
 	DuckLakeNameMapSet new_name_maps;
+	//! Name maps deleted by direct metadata operations, applied to the catalog cache on commit
+	vector<MappingIndex> pending_name_map_cache_invalidations;
+	//! Previous values of config options set by this transaction, for rollback
+	vector<DuckLakeConfigOptionUndo> config_option_undo;
 
 	atomic<idx_t> catalog_version;
 };

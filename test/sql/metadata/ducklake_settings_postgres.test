@@ -1,0 +1,25 @@
+# name: test/sql/metadata/ducklake_settings_postgres.test
+# description: Test ducklake_settings function with postgres catalog
+# group: [metadata]
+
+require ducklake
+
+require parquet
+
+require postgres_scanner
+
+#FIXME: ADD THIS TO PG CI WHEN IT GETS BACK
+require-env DUCKLAKE_CI
+
+test-env DATA_PATH {TEST_DIR}
+
+statement ok
+ATTACH 'ducklake:postgres:dbname=ducklakedb' AS ducklake (DATA_PATH '{DATA_PATH}/files')
+
+statement ok
+use ducklake
+
+query III
+SELECT catalog_type, extension_version IS NOT NULL AS has_version, data_path IS NOT NULL AS has_path FROM settings();
+----
+postgres	true	true

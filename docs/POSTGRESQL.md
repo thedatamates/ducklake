@@ -1,174 +1,34 @@
-# Using PostgreSQL as DuckLake Metadata Store
+# PostgreSQL metadata
 
-DuckLake can use PostgreSQL instead of DuckDB for storing catalog metadata. This enables shared metadata access across multiple clients and integrates with existing PostgreSQL infrastructure.
+PostgreSQL is the shared metabase used by Crucible. Multiple DuckLake catalogs occupy the same metabase relations, distinguished by `catalog_id`. `METADATA_SCHEMA` selects the PostgreSQL schema holding those relations; it does not provide catalog isolation.
 
-## Building with PostgreSQL Support
+## Provisioning
 
-The `postgres_scanner` extension is required but not built by default.
+Build the [matched runtime and PostgreSQL scanner](BUILD.md). Provision the fresh metabase with `crucible mb migrate`, using Crucible's configured metabase connection, then create catalogs through Crucible. Its authoritative schema is `macro/services/crucible/src/migration/metabase/schema.sql` in Monogram.
 
-```bash
-ENABLE_POSTGRES_SCANNER=1 make release
-```
+The format marker is `1.1-dev1-catalog1`. The baseline includes the shared snapshot sequence, snapshot lineage and catalog-aware keys. There is no old-data upgrade in this integration. The extension requires an existing schema and active catalog; ATTACH does not provision either.
 
-This builds both the DuckLake extension and the PostgreSQL scanner extension.
+## Attachment
 
-## Setting Up PostgreSQL
-
-### 1. Create Database and Schema
-
-```bash
-psql -U <username> -d postgres -c "CREATE DATABASE ducklake;"
-psql -U <username> -d ducklake -c "CREATE SCHEMA ducklake;"
-```
-
-### 2. Load the Schema
-
-```bash
-psql -U <username> -d ducklake -c "SET search_path TO ducklake;" \
-  -f schema/postgresql.sql
-```
-
-### 3. Initialize Metadata
-
-`schema/postgresql.sql` creates the bootstrap snapshot and initializes `ducklake_snapshot_id_seq`.
-You only need to set the `encrypted` metadata value:
-
-```bash
-psql -U <username> -d ducklake -c "
-SET search_path TO ducklake;
-INSERT INTO ducklake_metadata (key, value) VALUES ('encrypted', 'false');
-"
-```
-
-## Using DuckLake with PostgreSQL
-
-### Use the Built DuckDB Binary
-
-Extensions are version-locked. Use the DuckDB built with the project, not a system-installed version:
+Use the matched shell and locally built extensions:
 
 ```bash
 ./build/release/duckdb -unsigned
 ```
 
-The `-unsigned` flag allows loading locally-built extensions.
-
-### Load Extensions
-
 ```sql
-LOAD 'build/release/extension/ducklake/ducklake.duckdb_extension';
 LOAD 'build/release/extension/postgres_scanner/postgres_scanner.duckdb_extension';
+LOAD 'build/release/extension/ducklake/ducklake.duckdb_extension';
+ATTACH 'ducklake:postgres:host=127.0.0.1 dbname=metabase user=crucible'
+    AS workbook (CATALOG_ID 42, DATA_PATH '/shared/data/', METADATA_SCHEMA 'public');
 ```
 
-### Attach with PostgreSQL Metadata
+Replace the connection, root and numeric ID with those provisioned for the application. Optional `CATALOG` must match the stored catalog name. SQL aliases can differ from catalog names.
 
-```sql
-ATTACH 'ducklake:postgres:dbname=ducklake user=<username>' AS lake (
-  DATA_PATH '/path/to/data',
-  METADATA_SCHEMA 'ducklake',
-  CATALOG 'mycatalog'
-);
-```
+The PostgreSQL manager executes metadata SQL through the scanner's `postgres_query` and `postgres_execute` wrappers. The remote SQL qualifies relations and sequences by PostgreSQL schema; the attachment name is passed separately to the wrapper. The sequence query keeps preparation enabled so it returns the allocated value, not a row count.
 
-Connection string format follows libpq:
-- `host=localhost` - PostgreSQL host
-- `port=5432` - PostgreSQL port
-- `dbname=ducklake` - Database name
-- `user=username` - Username
-- `password=secret` - Password (or use .pgpass)
+## Concurrent writers
 
-### Example Session
+The extension and Crucible acquire the same transactional guard before consuming shared allocation counters. Retrying conflicts and sequence gaps are expected. See [snapshot allocation](SNAPSHOT_SEQUENCE.md).
 
-```sql
-LOAD 'ducklake';
-LOAD 'postgres_scanner';
-
-ATTACH 'ducklake:postgres:dbname=ducklake user=joshferguson' AS lake (
-  DATA_PATH '/tmp/ducklake_data',
-  METADATA_SCHEMA 'ducklake',
-  CATALOG 'production'
-);
-
-USE lake;
-
-CREATE TABLE events (id INT, ts TIMESTAMP, data VARCHAR);
-INSERT INTO events VALUES (1, NOW(), 'test');
-SELECT * FROM events;
-```
-
-## Attach Options
-
-| Option | Description |
-|--------|-------------|
-| `DATA_PATH` | Directory for Parquet data files |
-| `METADATA_SCHEMA` | PostgreSQL schema containing DuckLake tables |
-| `CATALOG` | Catalog name within DuckLake |
-| `ENCRYPTED` | Enable encryption for data files |
-| `DATA_INLINING_ROW_LIMIT` | Max rows to inline in metadata |
-
-## Verifying Setup
-
-Check metadata is being stored in PostgreSQL:
-
-```bash
-psql -U <username> -d ducklake -c "
-SET search_path TO ducklake;
-SELECT table_name, table_id FROM ducklake_table;
-"
-```
-
-Check data files:
-
-```bash
-psql -U <username> -d ducklake -c "
-SET search_path TO ducklake;
-SELECT path, record_count, file_size_bytes FROM ducklake_data_file;
-"
-```
-
-## Schema Indexes
-
-The `schema/postgresql.sql` file includes indexes optimized for DuckLake query patterns:
-
-| Index | Purpose |
-|-------|---------|
-| `idx_catalog_name` | Catalog name lookups |
-| `idx_table_schema` | Tables by schema |
-| `idx_data_file_table` | Data files by table |
-| `idx_data_file_id` | Data file lookups |
-| `idx_delete_file_table` | Delete files by table |
-| `idx_delete_file_data` | Delete files by data file |
-
-## Troubleshooting
-
-### "No snapshots found"
-
-The schema wasn't initialized. Run the initialization SQL above.
-
-### "Extension postgres_scanner not found"
-
-Rebuild with `ENABLE_POSTGRES_SCANNER=1 make release`.
-
-### "The file was built specifically for DuckDB version X"
-
-This project builds against DuckDB's development branch. The built extension only works with the DuckDB binary built alongside it:
-
-```bash
-./build/release/duckdb -unsigned
-```
-
-If using a released DuckDB version, install extensions from the repository instead:
-
-```sql
-INSTALL ducklake;
-INSTALL postgres_scanner;
-LOAD ducklake;
-LOAD postgres_scanner;
-```
-
-### Connection errors
-
-Verify PostgreSQL is running and credentials are correct:
-
-```bash
-psql -U <username> -d ducklake -c "SELECT 1;"
-```
+Integration validation used a disposable PostgreSQL 17 cluster on `127.0.0.1:55439`, with explicit test connection overrides. Follow Crucible's test README when repeating these tests: its fixtures reset the dedicated test databases. No production database or existing application data was used for validation.

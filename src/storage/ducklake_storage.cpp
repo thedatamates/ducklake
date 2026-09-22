@@ -1,4 +1,7 @@
 #include "duckdb.hpp"
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/main/attached_database.hpp"
+#include "duckdb/parser/parsed_data/attach_info.hpp"
 
 #include "storage/ducklake_storage.hpp"
 #include "storage/ducklake_catalog.hpp"
@@ -14,7 +17,7 @@ static void HandleDuckLakeOption(DuckLakeOptions &options, const string &option,
 	} else if (lcase == "override_data_path") {
 		options.override_data_path = value.GetValue<bool>();
 	} else if (lcase == "metadata_schema") {
-		options.metadata_schema = value.ToString();
+		options.metadata_schema = Identifier(value.ToString());
 	} else if (lcase == "metadata_catalog") {
 		options.metadata_database = value.ToString();
 	} else if (lcase == "metadata_path") {
@@ -52,12 +55,21 @@ static void HandleDuckLakeOption(DuckLakeOptions &options, const string &option,
 	} else if (StringUtil::StartsWith(lcase, "meta_")) {
 		auto parameter_name = lcase.substr(5);
 		options.metadata_parameters[parameter_name] = value;
+	} else if (lcase == "write_deletion_vectors") {
+		options.config_options["write_deletion_vectors"] =
+		    BooleanValue::Get(value.DefaultCastAs(LogicalType::BOOLEAN)) ? "true" : "false";
 	} else if (lcase == "create_if_not_exists") {
 		options.create_if_not_exists = BooleanValue::Get(value.DefaultCastAs(LogicalType::BOOLEAN));
-	} else if (lcase == "migrate_if_required") {
-		options.migrate_if_required = BooleanValue::Get(value.DefaultCastAs(LogicalType::BOOLEAN));
+	} else if (lcase == "automatic_migration") {
+		options.automatic_migration = BooleanValue::Get(value.DefaultCastAs(LogicalType::BOOLEAN));
 	} else if (lcase == "busy_timeout") {
 		options.busy_timeout = UBigIntValue::Get(value.DefaultCastAs(LogicalType::UBIGINT));
+	} else if (lcase == "ducklake_version") {
+		auto version = DuckLakeVersionFromString(value.ToString());
+		if (version < DuckLakeVersion::V1_0) {
+			throw InvalidInputException("ducklake_version must be >= '1.0', got '%s'", value.ToString());
+		}
+		options.ducklake_version = version;
 	} else {
 		throw NotImplementedException("Unsupported option %s for DuckLake", option);
 	}
@@ -73,25 +85,31 @@ static unique_ptr<Catalog> DuckLakeAttach(optional_ptr<StorageExtensionInfo> sto
 		secret = DuckLakeSecret::GetSecret(context, DuckLakeSecret::DEFAULT_SECRET);
 		if (!secret) {
 			throw InvalidInputException(
-			    "Default secret was not found - either specify a path to attach to directly, or create the secret");
-		}
-	} else if (DuckLakeSecret::PathIsSecret(info.path)) {
-		// if the path is a plain name - load the secret name
-		secret = DuckLakeSecret::GetSecret(context, info.path);
-		if (!secret) {
-			throw InvalidInputException(
-			    "Secret \"%s\" was not found - if this was meant to be a path to a DuckDB file, use duckdb:%s instead",
-			    info.path, info.path);
+			    "Default secret was not found. Either:\n"
+			    "	- Specify a path to attach to directly,\n"
+			    "	- Create a new (default) secret,\n"
+			    "	- Or reattach using a named secret (e.g `ATTACH 'ducklake:my_named_secret' AS my_ducklake;`),\n"
+			    "For more information, see https://ducklake.select/docs/stable/duckdb/usage/connecting#secrets");
 		}
 	} else {
-		// otherwise set the remainder of the path as the metadata path
-		options.metadata_path = info.path;
+		// Secret names can be quoted identifiers, so first try an exact lookup before treating path-like names as
+		// paths.
+		secret = DuckLakeSecret::GetSecret(context, info.path);
+		if (!secret) {
+			if (DuckLakeSecret::PathIsSecret(info.path)) {
+				throw InvalidInputException("Secret \"%s\" was not found - if this was meant to be a path to a DuckDB "
+				                            "file, use duckdb:%s instead",
+				                            info.path, info.path);
+			}
+			// otherwise set the remainder of the path as the metadata path
+			options.metadata_path = info.path;
+		}
 	}
 	if (secret) {
 		// if we have a secret - handle the options
 		const auto &kv_secret = dynamic_cast<const KeyValueSecret &>(*secret->secret);
 		for (auto &entry : kv_secret.secret_map) {
-			HandleDuckLakeOption(options, entry.first, entry.second);
+			HandleDuckLakeOption(options, entry.first.GetIdentifierName(), entry.second);
 		}
 	}
 	options.access_mode = attach_options.access_mode;
@@ -105,9 +123,7 @@ static unique_ptr<Catalog> DuckLakeAttach(optional_ptr<StorageExtensionInfo> sto
 	if (options.access_mode == AccessMode::READ_ONLY && !is_create_if_not_exists_set) {
 		options.create_if_not_exists = false;
 	}
-	if (options.catalog_name.empty()) {
-		throw InvalidInputException("CATALOG is required. Please provide CATALOG when attaching the database.");
-	}
+	options.hide_metadata_catalog = options.metadata_database.empty();
 	if (options.metadata_database.empty()) {
 		options.metadata_database = "__ducklake_metadata_" + name;
 	}

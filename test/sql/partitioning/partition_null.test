@@ -1,0 +1,87 @@
+# name: test/sql/partitioning/partition_null.test
+# description: Test partitioning with NULL values
+# group: [partitioning]
+
+require ducklake
+
+require parquet
+
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+
+test-env DATA_PATH {TEST_DIR}
+
+# partitioning based on a column
+statement ok
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_partitioning_null', METADATA_CATALOG 'ducklake_metadata')
+
+statement ok
+USE ducklake
+
+statement ok
+CREATE TABLE partitioned_tbl(part_key INTEGER, values VARCHAR);
+
+statement ok
+ALTER TABLE partitioned_tbl SET PARTITIONED BY (part_key);
+
+statement ok
+INSERT INTO partitioned_tbl SELECT case when i%3=0 then NULL ELSE i%2 END part_key, concat('thisisastring_', i) FROM range(10000) t(i)
+
+statement ok
+CALL ducklake_flush_inlined_data('ducklake')
+
+query I
+SELECT COUNT(*) FROM partitioned_tbl WHERE part_key=0
+----
+3333
+
+query I
+SELECT COUNT(*) FROM partitioned_tbl WHERE part_key IS NULL
+----
+3334
+
+# verify files are partitioned
+query I
+SELECT regexp_extract(path, '.*(part_key=[_a-zA-Z0-9]*)[/\\].*', 1) AS path FROM ducklake_metadata.ducklake_data_file
+ORDER BY path
+----
+part_key=0
+part_key=1
+part_key=__HIVE_DEFAULT_PARTITION__
+
+# verify files are pruned when querying the partitions
+query II
+EXPLAIN ANALYZE SELECT COUNT(*) FROM partitioned_tbl WHERE part_key=1
+----
+analyzed_plan	<REGEX>:.*Total Files Read: 1.*
+
+# inequality filters also prune all-NULL files
+query II
+EXPLAIN ANALYZE SELECT COUNT(*) FROM partitioned_tbl WHERE part_key > 0
+----
+analyzed_plan	<REGEX>:.*Total Files Read: 1.*
+
+# verify result correctness across all filter types
+query I
+SELECT COUNT(*) FROM partitioned_tbl WHERE part_key=1
+----
+3333
+
+query I
+SELECT COUNT(*) FROM partitioned_tbl WHERE part_key IS NULL
+----
+3334
+
+query I
+SELECT COUNT(*) FROM partitioned_tbl WHERE part_key > 0
+----
+3333
+
+query I
+SELECT COUNT(*) FROM partitioned_tbl WHERE part_key IS NOT NULL
+----
+6666
+
+query I
+SELECT COUNT(*) FROM partitioned_tbl
+----
+10000

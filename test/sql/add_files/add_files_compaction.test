@@ -6,65 +6,72 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
 
-test-env DATA_PATH __TEST_DIR__
+test-env DATA_PATH {TEST_DIR}
 
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_add_files_compaction/', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_add_files_compaction/')
 
-# snapshot 2
+# snapshot 1
 statement ok
 CREATE TABLE ducklake.test(i INTEGER);
 
-# snapshot 3
+# snapshot 2
 statement ok
 CREATE TABLE ducklake.test2(i INTEGER);
 
-# snapshot 4
+# snapshot 3
 statement ok
 INSERT INTO ducklake.test VALUES (1);
 
-# snapshot 5: random change that does not modify the "test" table
+# snapshot 4: random change that does not modify the "test" table
 statement ok
 INSERT INTO ducklake.test2 VALUES (42);
+
+# snapshot 5: flush inlined data to create files
+statement ok
+CALL ducklake_flush_inlined_data('ducklake')
 
 # snapshot 6..9
 loop i 2 6
 
 statement ok
-COPY (SELECT ${i} AS i) TO '${DATA_PATH}/ducklake_add_files_compaction/my_file${i}.parquet';
+COPY (SELECT {i} AS i) TO '{DATA_PATH}/ducklake_add_files_compaction/my_file{i}.parquet';
 
 statement ok
-CALL ducklake_add_data_files('ducklake', 'test', '${DATA_PATH}/ducklake_add_files_compaction/my_file${i}.parquet')
+CALL ducklake_add_data_files('ducklake', 'test', '{DATA_PATH}/ducklake_add_files_compaction/my_file{i}.parquet')
 
 endloop
 
 query I
-SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_add_files_compaction/**/*')
+SELECT COUNT(*) FROM GLOB('{DATA_PATH}/ducklake_add_files_compaction/**/*')
 ----
 6
 
-query III
-SELECT snapshot_id, rowid, * FROM ducklake.test ORDER BY ALL
+query II
+SELECT rowid, * FROM ducklake.test ORDER BY ALL
 ----
-4	0	1
-6	1	2
-7	2	3
-8	3	4
-9	4	5
+0	1
+1	2
+2	3
+3	4
+4	5
 
-statement ok
-CALL ducklake.merge_adjacent_files();
+query III
+SELECT table_name, files_processed, files_created FROM ducklake.merge_adjacent_files()
+----
+test	5	1
 
-statement ok
-CALL ducklake_merge_adjacent_files('ducklake');
+query III
+SELECT table_name, files_processed, files_created FROM ducklake_merge_adjacent_files('ducklake')
+----
 
 # files are not immediately deleted - but are added to the deletion queue
 # we actually gain a file here
 query I
-SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_add_files_compaction/**/*')
+SELECT COUNT(*) FROM GLOB('{DATA_PATH}/ducklake_add_files_compaction/**/*')
 ----
 7
 
@@ -86,53 +93,80 @@ SELECT COUNT(*) FROM ducklake_cleanup_old_files('ducklake', cleanup_all => true,
 
 # now the files are gone
 query I
-SELECT COUNT(*) FROM GLOB('${DATA_PATH}/ducklake_add_files_compaction/**/*')
+SELECT COUNT(*) FROM GLOB('{DATA_PATH}/ducklake_add_files_compaction/**/*')
 ----
 2
+
+# compute dynamic snapshot IDs for time travel and table insertions
+# s1: first insert into test (table_id=1)
+statement ok
+SET VARIABLE s1 = (SELECT snapshot_id FROM (SELECT snapshot_id, row_number() OVER (ORDER BY snapshot_id) as rn FROM ducklake_snapshots('ducklake') WHERE changes::VARCHAR LIKE '%insert%=[1]%') WHERE rn = 1);
+
+# s_test2: first insert into test2 (table_id=2)
+statement ok
+SET VARIABLE s_test2 = (SELECT snapshot_id FROM (SELECT snapshot_id, row_number() OVER (ORDER BY snapshot_id) as rn FROM ducklake_snapshots('ducklake') WHERE changes::VARCHAR LIKE '%insert%=[2]%') WHERE rn = 1);
+
+# s2: second insert into test (first add_data_files)
+statement ok
+SET VARIABLE s2 = (SELECT snapshot_id FROM (SELECT snapshot_id, row_number() OVER (ORDER BY snapshot_id) as rn FROM ducklake_snapshots('ducklake') WHERE changes::VARCHAR LIKE '%insert%=[1]%') WHERE rn = 2);
+
+# s3: third insert into test
+statement ok
+SET VARIABLE s3 = (SELECT snapshot_id FROM (SELECT snapshot_id, row_number() OVER (ORDER BY snapshot_id) as rn FROM ducklake_snapshots('ducklake') WHERE changes::VARCHAR LIKE '%insert%=[1]%') WHERE rn = 3);
+
+# s_last: last snapshot
+statement ok
+SET VARIABLE s_last = (SELECT max(snapshot_id) FROM ducklake_snapshots('ducklake'));
 
 # verify correct behavior when operating on the compacted file
 # time travel
 query I
-SELECT * FROM ducklake.test AT (VERSION => 5)
+SELECT * FROM ducklake.test AT (VERSION => getvariable('s1'))
 ----
 1
 
 query I
-SELECT * FROM ducklake.test AT (VERSION => 6) ORDER BY ALL
+SELECT * FROM ducklake.test AT (VERSION => getvariable('s_test2'))
+----
+1
+
+
+query I
+SELECT * FROM ducklake.test AT (VERSION => getvariable('s2')) ORDER BY ALL
 ----
 1
 2
 
-# reading snapshot id and row id
-query III
-SELECT snapshot_id, rowid, * FROM ducklake.test ORDER BY ALL
+# reading row id
+query II
+SELECT rowid, * FROM ducklake.test ORDER BY ALL
 ----
-4	0	1
-6	1	2
-7	2	3
-8	3	4
-9	4	5
+0	1
+1	2
+2	3
+3	4
+4	5
 
 # table insertions function
 query II
-SELECT rowid, * FROM ducklake_table_insertions('ducklake', 'main', 'test', 0, 4) ORDER BY ALL
+SELECT rowid, * FROM ducklake_table_insertions('ducklake', 'main', 'test', 0, getvariable('s1')) ORDER BY ALL
 ----
 0	1
 
 query II
-SELECT rowid, * FROM ducklake_table_insertions('ducklake', 'main', 'test', 0, 5) ORDER BY ALL
+SELECT rowid, * FROM ducklake_table_insertions('ducklake', 'main', 'test', 0, getvariable('s_test2')) ORDER BY ALL
 ----
 0	1
 
 query II
-SELECT rowid, * FROM ducklake_table_insertions('ducklake', 'main', 'test', 0, 7) ORDER BY ALL
+SELECT rowid, * FROM ducklake_table_insertions('ducklake', 'main', 'test', 0, getvariable('s3')) ORDER BY ALL
 ----
 0	1
 1	2
 2	3
 
 query II
-SELECT rowid, * FROM ducklake_table_insertions('ducklake', 'main', 'test', 0, 10) ORDER BY ALL
+SELECT rowid, * FROM ducklake_table_insertions('ducklake', 'main', 'test', 0, getvariable('s_last')) ORDER BY ALL
 ----
 0	1
 1	2

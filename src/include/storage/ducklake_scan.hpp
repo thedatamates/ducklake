@@ -9,6 +9,8 @@
 #pragma once
 
 #include "duckdb/common/common.hpp"
+#include "duckdb/catalog/catalog_entry/copy_function_catalog_entry.hpp"
+#include "duckdb/main/database.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "common/ducklake_snapshot.hpp"
 #include "common/index.hpp"
@@ -17,6 +19,8 @@ namespace duckdb {
 class DuckLakeMultiFileList;
 class DuckLakeTableEntry;
 class DuckLakeTransaction;
+class Serializer;
+class Deserializer;
 
 class DuckLakeFunctions {
 public:
@@ -25,13 +29,21 @@ public:
 
 	static unique_ptr<FunctionData> BindDuckLakeScan(ClientContext &context, TableFunction &function);
 
-	static CopyFunctionCatalogEntry &GetCopyFunction(ClientContext &context, const string &name);
+	static CopyFunctionCatalogEntry &GetCopyFunction(ClientContext &context, const Identifier &name);
 };
 
-enum class DuckLakeScanType { SCAN_TABLE, SCAN_INSERTIONS, SCAN_DELETIONS };
+//! Serialize/Deserialize callbacks for DuckLakeScan (used by table macro Copy)
+void DuckLakeScanSerialize(Serializer &serializer, const optional_ptr<FunctionData> bind_data,
+                           const TableFunction &function);
+unique_ptr<FunctionData> DuckLakeScanDeserialize(Deserializer &deserializer, TableFunction &function);
+
+enum class DuckLakeScanType { SCAN_TABLE, SCAN_INSERTIONS, SCAN_DELETIONS, SCAN_FOR_FLUSH };
 
 struct DuckLakeFunctionInfo : public TableFunctionInfo {
 	DuckLakeFunctionInfo(DuckLakeTableEntry &table, DuckLakeTransaction &transaction, DuckLakeSnapshot snapshot);
+
+	static shared_ptr<DuckLakeFunctionInfo> Create(DuckLakeTableEntry &table, DuckLakeTransaction &transaction,
+	                                               DuckLakeSnapshot snapshot);
 
 	DuckLakeTableEntry &table;
 	weak_ptr<DuckLakeTransaction> transaction;
@@ -45,6 +57,7 @@ struct DuckLakeFunctionInfo : public TableFunctionInfo {
 	unique_ptr<DuckLakeSnapshot> start_snapshot;
 
 	shared_ptr<DuckLakeTransaction> GetTransaction();
+	bool CanUseGlobalStats();
 };
 
 } // namespace duckdb

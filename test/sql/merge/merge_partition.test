@@ -6,10 +6,10 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '__TEST_DIR__/merge_partition', METADATA_CATALOG 'ducklake_meta', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{TEST_DIR}/merge_partition', METADATA_CATALOG 'ducklake_meta')
 
 statement ok
 USE ducklake
@@ -22,6 +22,9 @@ ALTER TABLE my_timeseries SET PARTITIONED BY (year(ts));
 
 statement ok
 insert into my_timeseries VALUES ('2025-09-15',42)
+
+statement ok
+CALL ducklake_flush_inlined_data('ducklake')
 
 statement ok
 MERGE INTO my_timeseries
@@ -65,10 +68,16 @@ statement ok
 insert into my_timeseries VALUES ('2025-09-15', 43, 39)
 
 statement ok
+CALL ducklake_flush_inlined_data('ducklake')
+
+statement ok
 CREATE TABLE my_timeseries_new (ts TIMESTAMP, x DOUBLE PRECISION, y DOUBLE PRECISION);
 
 statement ok
 insert into my_timeseries_new VALUES ('2025-09-15', 43, 33)
+
+statement ok
+CALL ducklake_flush_inlined_data('ducklake')
 
 statement ok
 MERGE INTO my_timeseries old

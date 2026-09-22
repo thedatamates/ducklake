@@ -1,4 +1,11 @@
 #include "functions/ducklake_table_functions.hpp"
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/common/file_system.hpp"
+
+#include "duckdb/common/operator/subtract.hpp"
+#include "duckdb/common/string.hpp"
+#include "duckdb/common/types/interval.hpp"
+#include "duckdb/common/types/timestamp.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "storage/ducklake_catalog.hpp"
@@ -14,16 +21,11 @@ struct CleanupBindData : public TableFunctionData {
 		if (timestamp_filter.empty()) {
 			return "";
 		}
-		string quote;
-		if (!default_interval) {
-			// If our filter doesn't come from a default interval, we must apply single-quotes
-			quote = "'";
-		}
 		switch (type) {
 		case CleanupType::OLD_FILES:
-			return StringUtil::Format("schedule_start < %s%s%s", quote, timestamp_filter, quote);
+			return StringUtil::Format("WHERE schedule_start::TIMESTAMPTZ < '%s'", timestamp_filter);
 		case CleanupType::ORPHANED_FILES:
-			return StringUtil::Format(" AND last_modified < %s%s%s", quote, timestamp_filter, quote);
+			return StringUtil::Format(" AND last_modified::TIMESTAMPTZ < '%s'", timestamp_filter);
 		default:
 			throw InternalException("Unknown Cleanup type for GetFilter()");
 		}
@@ -44,16 +46,15 @@ struct CleanupBindData : public TableFunctionData {
 	vector<DuckLakeFileForCleanup> files;
 	//! If we are going to delete the files for real or not
 	bool dry_run = false;
-	bool default_interval = false;
 
 	CleanupType type;
 	string timestamp_filter;
 };
 
 static unique_ptr<FunctionData> CleanupBind(ClientContext &context, TableFunctionBindInput &input,
-                                            vector<LogicalType> &return_types, vector<string> &names,
+                                            vector<LogicalType> &return_types, vector<Identifier> &names,
                                             CleanupType type) {
-	auto &catalog = BaseMetadataFunction::GetCatalog(context, input.inputs[0]);
+	auto &catalog = DuckLakeBaseMetadataFunction::GetCatalog(context, input.inputs[0]);
 	auto result = make_uniq<CleanupBindData>(catalog, type);
 
 	auto &ducklake_catalog = reinterpret_cast<DuckLakeCatalog &>(catalog);
@@ -63,12 +64,11 @@ static unique_ptr<FunctionData> CleanupBind(ClientContext &context, TableFunctio
 	bool has_timestamp = false;
 	bool cleanup_all = false;
 	for (auto &entry : input.named_parameters) {
-		if (StringUtil::CIEquals(entry.first, "dry_run")) {
+		if (entry.first == "dry_run") {
 			result->dry_run = entry.second.GetValue<bool>();
-			;
-		} else if (StringUtil::CIEquals(entry.first, "cleanup_all")) {
+		} else if (entry.first == "cleanup_all") {
 			cleanup_all = entry.second.GetValue<bool>();
-		} else if (StringUtil::CIEquals(entry.first, "older_than")) {
+		} else if (entry.first == "older_than") {
 			from_timestamp = entry.second.GetValue<timestamp_tz_t>();
 			has_timestamp = true;
 		} else {
@@ -82,11 +82,18 @@ static unique_ptr<FunctionData> CleanupBind(ClientContext &context, TableFunctio
 		    "deletion via e.g., CALL ducklake.set_option('delete_older_than', '1 week');",
 		    result->GetFunctionName());
 	}
+
 	if (has_timestamp) {
-		result->timestamp_filter = Timestamp::ToString(timestamp_t(from_timestamp.value));
+		result->timestamp_filter = DuckLakeTableFunctionUtil::FormatTimestampISO8601(timestamp_t(from_timestamp.value));
 	} else if (!cleanup_all && !older_than_default.empty()) {
-		result->timestamp_filter = "NOW() - INTERVAL '" + older_than_default + "'";
-		result->default_interval = true;
+		interval_t interval;
+		if (!Interval::FromString(older_than_default, interval)) {
+			throw InvalidInputException("Failed to parse interval: '%s'", older_than_default);
+		}
+		auto current_time = Timestamp::GetCurrentTimestamp();
+		auto target_timestamp =
+		    SubtractOperator::Operation<timestamp_t, interval_t, timestamp_t>(current_time, interval);
+		result->timestamp_filter = DuckLakeTableFunctionUtil::FormatTimestampISO8601(target_timestamp);
 	}
 
 	auto &transaction = DuckLakeTransaction::Get(context, catalog);
@@ -99,13 +106,14 @@ static unique_ptr<FunctionData> CleanupBind(ClientContext &context, TableFunctio
 	return std::move(result);
 }
 static unique_ptr<FunctionData> DuckLakeCleanupOldFilesBind(ClientContext &context, TableFunctionBindInput &input,
-                                                            vector<LogicalType> &return_types, vector<string> &names) {
+                                                            vector<LogicalType> &return_types,
+                                                            vector<Identifier> &names) {
 	return CleanupBind(context, input, return_types, names, CleanupType::OLD_FILES);
 }
 
 static unique_ptr<FunctionData> DuckLakeCleanupOrphanedFilesBind(ClientContext &context, TableFunctionBindInput &input,
                                                                  vector<LogicalType> &return_types,
-                                                                 vector<string> &names) {
+                                                                 vector<Identifier> &names) {
 	return CleanupBind(context, input, return_types, names, CleanupType::ORPHANED_FILES);
 }
 
@@ -130,41 +138,27 @@ void DuckLakeCleanupExecute(ClientContext &context, TableFunctionInput &data_p, 
 	}
 	if (!state.executed && !data.dry_run) {
 		auto &fs = FileSystem::GetFileSystem(context);
-		auto &transaction = DuckLakeTransaction::Get(context, data.catalog);
-		auto &metadata_manager = transaction.GetMetadataManager();
-		vector<DuckLakeFileForCleanup> files_to_remove;
-		for (auto &file : data.files) {
-			if (file.id.IsValid()) {
-				auto check_query = StringUtil::Format(
-				    "SELECT COUNT(*) FROM {METADATA_CATALOG}.ducklake_data_file "
-				    "WHERE data_file_id = %llu AND end_snapshot IS NULL",
-				    file.id.index);
-				auto result = transaction.Query(check_query);
-				if (!result->HasError()) {
-					auto chunk = result->Fetch();
-					if (chunk && chunk->size() > 0) {
-						auto count = chunk->GetValue(0, 0).GetValue<int64_t>();
-						if (count > 0) {
-							continue;
-						}
-					}
-				}
-			}
-			fs.TryRemoveFile(file.path);
-			files_to_remove.push_back(file);
+		vector<string> paths;
+		paths.reserve(data.files.size());
+		for (const auto &file : data.files) {
+			paths.push_back(file.path);
 		}
-		if (data.type == CleanupType::OLD_FILES && !files_to_remove.empty()) {
-			metadata_manager.RemoveFilesScheduledForCleanup(files_to_remove);
+		fs.RemoveFiles(paths);
+		if (data.type == CleanupType::OLD_FILES) {
+			// If we are removing old files, we need to remove them from the catalog
+			auto &transaction = DuckLakeTransaction::Get(context, data.catalog);
+			auto &metadata_manager = transaction.GetMetadataManager();
+			metadata_manager.RemoveFilesScheduledForCleanup(data.files);
 		}
 		state.executed = true;
 	}
 	idx_t count = 0;
 	while (state.offset < data.files.size() && count < STANDARD_VECTOR_SIZE) {
 		auto &file = data.files[state.offset++];
-		output.SetValue(0, count, file.path);
+		output.data[0].Append(file.path);
 		count++;
 	}
-	output.SetCardinality(count);
+	output.SetChildCardinality(count);
 }
 
 DuckLakeCleanupOldFilesFunction::DuckLakeCleanupOldFilesFunction()

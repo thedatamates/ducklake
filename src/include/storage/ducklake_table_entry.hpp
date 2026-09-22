@@ -9,9 +9,14 @@
 #pragma once
 
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
+#include "duckdb/parser/parsed_data/alter_table_info.hpp"
 #include "storage/ducklake_stats.hpp"
 #include "storage/ducklake_partition_data.hpp"
+#include "storage/ducklake_sort_data.hpp"
 #include "common/index.hpp"
+#include "duckdb/common/unordered_set.hpp"
 #include "storage/ducklake_field_data.hpp"
 #include "common/local_change.hpp"
 #include "storage/ducklake_metadata_manager.hpp"
@@ -30,6 +35,9 @@ struct ColumnChangeInfo {
 	void DropField(const DuckLakeFieldId &field_id);
 };
 
+//! Returns the first GEOMETRY or VARIANT field at or below this one, whose bounds cannot be skipped
+optional_ptr<const DuckLakeFieldId> FindStatsUnsupportedField(const DuckLakeFieldId &field_id);
+
 class DuckLakeTableEntry : public TableCatalogEntry {
 public:
 	DuckLakeTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateTableInfo &info, TableIndex table_id,
@@ -38,6 +46,8 @@ public:
 	                   LocalChange local_change);
 
 public:
+	const ColumnList &GetColumns() const override;
+
 	TableIndex GetTableId() const {
 		return table_id;
 	}
@@ -53,9 +63,27 @@ public:
 	optional_ptr<DuckLakePartition> GetPartitionData() {
 		return partition_data.get();
 	}
+	optional_ptr<const DuckLakePartition> GetPartitionData() const {
+		return partition_data.get();
+	}
+	//! Returns SQL expressions for each partition field (e.g., "region", "year(ts)")
+	vector<string> GetPartitionSQLExpressions() const;
+	optional_ptr<DuckLakeSort> GetSortData() {
+		return sort_data.get();
+	}
+	optional_ptr<const DuckLakeSort> GetSortData() const {
+		return sort_data.get();
+	}
 	DuckLakeFieldData &GetFieldData() {
 		return *field_data;
 	}
+	const DuckLakeFieldData &GetFieldData() const {
+		return *field_data;
+	}
+	//! Field indexes whose min/max bounds are not recorded, including children of a skipped field
+	unordered_set<idx_t> GetSkippedStatsFields() const;
+	//! Refuses a field added below a skipped column whose statistics cannot be skipped
+	void ValidateAddedFieldsCanSkipStats(const DuckLakeFieldId &parent_id, const DuckLakeFieldId &new_field_id) const;
 	const ColumnChangeInfo &GetChangedFields() const {
 		return *changed_fields;
 	}
@@ -65,15 +93,22 @@ public:
 	const ColumnDefinition &GetColumnByFieldId(FieldIndex field_index) const;
 	//! Returns the root field id of a column
 	const DuckLakeFieldId &GetFieldId(PhysicalIndex column_index) const;
-	//! Returns the field id of a column by a column path
-	const DuckLakeFieldId &GetFieldId(const vector<string> &column_names) const;
+	//! Returns the field id of a column by a column path.
+	// If name_offset is provided and column_names points to a field **within** the variant, the variant column is
+	// returned and the offset in the column_names vector where the variant is located
+	const DuckLakeFieldId &GetFieldId(const vector<Identifier> &column_names,
+	                                  optional_ptr<optional_idx> name_offset = nullptr) const;
 	//! Returns the field id of a column by a column path if it exists (and nullptr otherwise)
-	optional_ptr<const DuckLakeFieldId> TryGetFieldId(const vector<string> &column_names) const;
+	optional_ptr<const DuckLakeFieldId> TryGetFieldId(const vector<Identifier> &column_names,
+	                                                  optional_ptr<optional_idx> name_offset = nullptr) const;
 	//! Returns the field id of a column by a field index
 	optional_ptr<const DuckLakeFieldId> GetFieldId(FieldIndex field_index) const;
 	void SetPartitionData(unique_ptr<DuckLakePartition> partition_data);
-	optional_ptr<DuckLakeTableStats> GetTableStats(ClientContext &context);
-	optional_ptr<DuckLakeTableStats> GetTableStats(DuckLakeTransaction &transaction);
+	void SetSortData(unique_ptr<DuckLakeSort> sort_data);
+	shared_ptr<DuckLakeTableStats> GetTableStats(ClientContext &context);
+	shared_ptr<DuckLakeTableStats> GetTableStats(DuckLakeTransaction &transaction);
+	idx_t GetNetDataFileRowCount(DuckLakeTransaction &transaction);
+	idx_t GetNetInlinedRowCount(DuckLakeTransaction &transaction);
 
 	//! Gets the top-level not-null fields
 	case_insensitive_set_t GetNotNullFields() const;
@@ -90,7 +125,7 @@ public:
 
 	TableStorageInfo GetStorageInfo(ClientContext &context) override;
 
-	unique_ptr<CatalogEntry> Alter(DuckLakeTransaction &transaction, AlterTableInfo &info);
+	unique_ptr<CatalogEntry> Alter(ClientContext &context, DuckLakeTransaction &transaction, AlterTableInfo &info);
 	unique_ptr<CatalogEntry> Alter(DuckLakeTransaction &transaction, SetCommentInfo &info);
 	unique_ptr<CatalogEntry> Alter(DuckLakeTransaction &transaction, SetColumnCommentInfo &info);
 
@@ -108,19 +143,35 @@ public:
 	virtual_column_map_t GetVirtualColumns() const override;
 	vector<column_t> GetRowIdColumns() const override;
 
+	//! Validate that every sort-expression column reference exists in the column list.
+	static void ValidateSortExpressionColumns(const ColumnList &columns, const vector<OrderByNode> &orders);
+
+	//! Build a DuckLakePartition from raw partition expressions (allocates a transaction-local id).
+	static unique_ptr<DuckLakePartition> BuildPartitionData(DuckLakeTransaction &transaction, const ColumnList &columns,
+	                                                        DuckLakeFieldData &field_data,
+	                                                        const vector<unique_ptr<ParsedExpression>> &partition_keys);
+	//! Build a DuckLakeSort from a vector of OrderByNode (allocates a transaction-local id).
+	static unique_ptr<DuckLakeSort> BuildSortData(DuckLakeTransaction &transaction, const ColumnList &columns,
+	                                              const vector<OrderByNode> &orders);
+	//! Build a DuckLakeSort from bare SORTED BY expressions (wraps each ASC/ORDER_DEFAULT).
+	static unique_ptr<DuckLakeSort> BuildSortData(DuckLakeTransaction &transaction, const ColumnList &columns,
+	                                              const vector<unique_ptr<ParsedExpression>> &sort_keys);
+
 private:
 	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, RenameTableInfo &info);
 	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, SetPartitionedByInfo &info);
-	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, SetNotNullInfo &info);
+	unique_ptr<CatalogEntry> AlterTable(ClientContext &context, DuckLakeTransaction &transaction, SetNotNullInfo &info);
 	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, DropNotNullInfo &info);
-	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, RenameColumnInfo &info);
-	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, AddColumnInfo &info);
+	unique_ptr<CatalogEntry> AlterTable(ClientContext &context, DuckLakeTransaction &transaction,
+	                                    RenameColumnInfo &info);
+	unique_ptr<CatalogEntry> AlterTable(ClientContext &context, DuckLakeTransaction &transaction, AddColumnInfo &info);
 	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, RemoveColumnInfo &info);
 	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, ChangeColumnTypeInfo &info);
 	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, AddFieldInfo &info);
 	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, RemoveFieldInfo &info);
 	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, RenameFieldInfo &info);
 	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, SetDefaultInfo &info);
+	unique_ptr<CatalogEntry> AlterTable(DuckLakeTransaction &transaction, SetSortedByInfo &info);
 
 	unique_ptr<DuckLakeFieldId> GetNestedEvolution(const DuckLakeFieldId &source_id, const LogicalType &target,
 	                                               ColumnChangeInfo &result, optional_idx parent_idx);
@@ -132,6 +183,8 @@ private:
 public:
 	// ! Create a DuckLakeTableEntry from an ALTER
 	DuckLakeTableEntry(DuckLakeTableEntry &parent, CreateTableInfo &info, LocalChange local_change);
+	DuckLakeTableEntry(DuckLakeTableEntry &parent, CreateTableInfo &info, SetDefaultLocalChange local_change);
+
 	// ! Create a DuckLakeTableEntry from a RENAME COLUMN
 	DuckLakeTableEntry(DuckLakeTableEntry &parent, CreateTableInfo &info, LocalChange local_change,
 	                   const string &new_name);
@@ -143,6 +196,11 @@ public:
 	                   unique_ptr<ColumnChangeInfo> changed_fields, shared_ptr<DuckLakeFieldData> new_field_data);
 	// ! Create a DuckLakeTableEntry from a SET PARTITION KEY
 	DuckLakeTableEntry(DuckLakeTableEntry &parent, CreateTableInfo &info, unique_ptr<DuckLakePartition> partition_data);
+	// ! Create a DuckLakeTableEntry from a SET SORT KEY
+	DuckLakeTableEntry(DuckLakeTableEntry &parent, CreateTableInfo &info, unique_ptr<DuckLakeSort> sort_data);
+
+protected:
+	ColumnList columns;
 
 private:
 	TableIndex table_id;
@@ -153,6 +211,7 @@ private:
 	vector<DuckLakeInlinedTableInfo> inlined_data_tables;
 	LocalChange local_change;
 	unique_ptr<DuckLakePartition> partition_data;
+	unique_ptr<DuckLakeSort> sort_data;
 	// only set for REMOVED_COLUMN
 	unique_ptr<ColumnChangeInfo> changed_fields;
 };

@@ -3,8 +3,172 @@
 #include "duckdb/main/database.hpp"
 #include "storage/ducklake_catalog.hpp"
 #include "storage/ducklake_transaction.hpp"
+#include "storage/ducklake_metadata_info.hpp"
+#include "storage/ducklake_table_entry.hpp"
 
 namespace duckdb {
+
+static bool HasFourDigitDatePrefix(const string &value) {
+	return value.size() >= 10 && StringUtil::CharacterIsDigit(value[0]) && StringUtil::CharacterIsDigit(value[1]) &&
+	       StringUtil::CharacterIsDigit(value[2]) && StringUtil::CharacterIsDigit(value[3]) && value[4] == '-' &&
+	       StringUtil::CharacterIsDigit(value[5]) && StringUtil::CharacterIsDigit(value[6]) && value[7] == '-' &&
+	       StringUtil::CharacterIsDigit(value[8]) && StringUtil::CharacterIsDigit(value[9]);
+}
+
+static string WithPostgresBinaryCollation(const string &expression) {
+	return "(" + expression + " COLLATE \"C\")";
+}
+
+static bool IsPostgresTemporalStatsType(const LogicalType &type) {
+	switch (type.id()) {
+	case LogicalTypeId::DATE:
+	case LogicalTypeId::TIMESTAMP:
+	case LogicalTypeId::TIMESTAMP_SEC:
+	case LogicalTypeId::TIMESTAMP_MS:
+	case LogicalTypeId::TIMESTAMP_TZ:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static string GetPostgresStatsType(const LogicalType &type) {
+	switch (type.id()) {
+	case LogicalTypeId::BOOLEAN:
+		return "BOOLEAN";
+	case LogicalTypeId::TINYINT:
+	case LogicalTypeId::SMALLINT:
+		return "SMALLINT";
+	case LogicalTypeId::INTEGER:
+	case LogicalTypeId::UTINYINT:
+	case LogicalTypeId::USMALLINT:
+		return "INTEGER";
+	case LogicalTypeId::BIGINT:
+	case LogicalTypeId::UINTEGER:
+		return "BIGINT";
+	case LogicalTypeId::UBIGINT:
+	case LogicalTypeId::HUGEINT:
+	case LogicalTypeId::UHUGEINT:
+		return "NUMERIC";
+	case LogicalTypeId::FLOAT:
+		return "REAL";
+	case LogicalTypeId::DOUBLE:
+		return "DOUBLE PRECISION";
+	case LogicalTypeId::DATE:
+		return "DATE";
+	case LogicalTypeId::TIMESTAMP:
+	case LogicalTypeId::TIMESTAMP_SEC:
+	case LogicalTypeId::TIMESTAMP_MS:
+		return "TIMESTAMP";
+	case LogicalTypeId::TIMESTAMP_TZ:
+		return "TIMESTAMPTZ";
+	case LogicalTypeId::DECIMAL:
+		return type.ToString();
+	default:
+		return string();
+	}
+}
+
+static bool CanCastPostgresStatsForValueComparison(const LogicalType &type) {
+	return type.IsNumeric() || type.id() == LogicalTypeId::BOOLEAN || IsPostgresTemporalStatsType(type);
+}
+
+static bool CanCastPostgresTemporalValue(const Value &value, const LogicalType &type) {
+	auto string_value = value.ToString();
+	if (!HasFourDigitDatePrefix(string_value)) {
+		return false;
+	}
+	return type.id() != LogicalTypeId::DATE || string_value.size() == 10;
+}
+
+string PostgresMetadataManager::CastValueToTarget(const Value &value, const LogicalType &type) {
+	if (value.IsNull() || value.ToString().find('\0') != string::npos || type.id() == LogicalTypeId::BLOB) {
+		return string();
+	}
+	if (RequiresValueComparison(type) &&
+	    (!CanCastPostgresStatsForValueComparison(type) ||
+	     ((value.type().id() == LogicalTypeId::FLOAT || value.type().id() == LogicalTypeId::DOUBLE) &&
+	      !Value::IsFinite(value.GetValue<double>())))) {
+		return string();
+	}
+	if (!RequiresValueComparison(type) && type.id() != LogicalTypeId::VARCHAR) {
+		return string();
+	}
+	if (IsPostgresTemporalStatsType(type) && !CanCastPostgresTemporalValue(value, type)) {
+		return string();
+	}
+	if (type.IsNumeric()) {
+		return value.ToString();
+	}
+	auto literal = DuckLakeUtil::SQLLiteralToString(value.ToString());
+	if (type.id() == LogicalTypeId::VARCHAR) {
+		return WithPostgresBinaryCollation(literal);
+	}
+	if (IsPostgresTemporalStatsType(type)) {
+		return literal + "::" + GetPostgresStatsType(type);
+	}
+	if (type.id() == LogicalTypeId::BOOLEAN) {
+		return literal + "::BOOLEAN";
+	}
+	return string();
+}
+
+static string PostgresSafeTemporalStatsCast(const string &stats, const LogicalType &type) {
+	string regex;
+	if (type.id() == LogicalTypeId::DATE) {
+		regex = "'^[0-9]{4}-(0[1-9]|1[0-2])-([0][1-9]|[12][0-9]|3[01])$'";
+	} else if (type.id() == LogicalTypeId::TIMESTAMP_TZ) {
+		regex = "'^[0-9]{4}-(0[1-9]|1[0-2])-([0][1-9]|[12][0-9]|3[01]) "
+		        "([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,6})?"
+		        "(Z|[+-](0[0-9]|1[0-5])(:[0-5][0-9])?)$'";
+	} else {
+		regex = "'^[0-9]{4}-(0[1-9]|1[0-2])-([0][1-9]|[12][0-9]|3[01])"
+		        "( ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,6})?)?$'";
+	}
+
+	auto year = StringUtil::Format("substring(%s FROM 1 FOR 4)::INTEGER", stats);
+	auto month = StringUtil::Format("substring(%s FROM 6 FOR 2)::INTEGER", stats);
+	auto day = StringUtil::Format("substring(%s FROM 9 FOR 2)::INTEGER", stats);
+	auto max_day = StringUtil::Format(
+	    "(CASE WHEN %s = 2 THEN CASE WHEN mod(%s, 4) = 0 AND (mod(%s, 100) <> 0 OR mod(%s, 400) = 0) "
+	    "THEN 29 ELSE 28 END WHEN %s IN (4, 6, 9, 11) THEN 30 ELSE 31 END)",
+	    month, year, year, year, month);
+	auto valid_date = StringUtil::Format("%s > 0 AND %s <= %s", year, day, max_day);
+	return StringUtil::Format("(CASE WHEN %s ~ %s THEN CASE WHEN %s THEN %s::%s END END)", stats, regex, valid_date,
+	                          stats, GetPostgresStatsType(type));
+}
+
+string PostgresMetadataManager::CastStatsToTarget(const string &stats, const LogicalType &type,
+                                                  StatsCastType cast_type) {
+	if (IsPostgresTemporalStatsType(type)) {
+		auto cast = PostgresSafeTemporalStatsCast(stats, type);
+		if (cast_type == StatsCastType::ORDERING) {
+			return cast;
+		}
+		// Unknown bounds must not exclude a file that can satisfy the data filter.
+		return StringUtil::Format("COALESCE(%s, '%s'::%s)", cast,
+		                          cast_type == StatsCastType::MIN ? "-infinity" : "infinity",
+		                          GetPostgresStatsType(type));
+	}
+	if (CanCastPostgresStatsForValueComparison(type)) {
+		return stats + "::" + GetPostgresStatsType(type);
+	}
+	if (type.id() == LogicalTypeId::VARCHAR) {
+		return WithPostgresBinaryCollation(stats);
+	}
+	return string();
+}
+
+static string GeneratePostgresNativeFileColumnStatsCTEBody(const CTERequirement &requirement, TableIndex table_id) {
+	string select_list = "data_file_id";
+	for (const auto &stat : requirement.referenced_stats) {
+		select_list += ", " + stat;
+	}
+	return StringUtil::Format("  SELECT %s\n"
+	                          "  FROM {METADATA_SCHEMA_ESCAPED}.ducklake_file_column_stats\n"
+	                          "  WHERE catalog_id = {CATALOG_ID} AND column_id = %d AND table_id = %d\n",
+	                          select_list, requirement.column_field_index, table_id.index);
+}
 
 PostgresMetadataManager::PostgresMetadataManager(DuckLakeTransaction &transaction)
     : DuckLakeMetadataManager(transaction) {
@@ -16,9 +180,60 @@ bool PostgresMetadataManager::TypeIsNativelySupported(const LogicalType &type) {
 	case LogicalTypeId::STRUCT:
 	case LogicalTypeId::MAP:
 	case LogicalTypeId::LIST:
+	case LogicalTypeId::UBIGINT:
+	case LogicalTypeId::HUGEINT:
+	case LogicalTypeId::UHUGEINT:
+	// Postgres timestamp/date ranges are narrower than DuckDB's
+	case LogicalTypeId::DATE:
+	case LogicalTypeId::TIMESTAMP:
+	case LogicalTypeId::TIMESTAMP_TZ:
+	case LogicalTypeId::TIMESTAMP_TZ_NS:
+	case LogicalTypeId::TIMESTAMP_SEC:
+	case LogicalTypeId::TIMESTAMP_MS:
+	case LogicalTypeId::TIMESTAMP_NS:
+	// Postgres bytea input format differs from DuckDB's blob text format
+	case LogicalTypeId::BLOB:
+	// Postgres cannot store null bytes in VARCHAR/TEXT columns
+	case LogicalTypeId::VARCHAR:
+	case LogicalTypeId::VARIANT:
+	// If we knew that the Postgres installation has PostGIS installed, we could support GEOMETRY in the future.
+	case LogicalTypeId::GEOMETRY:
 		return false;
 	default:
 		return true;
+	}
+}
+
+string PostgresMetadataManager::GetColumnTypeInternal(const LogicalType &column_type) {
+	switch (column_type.id()) {
+	case LogicalTypeId::DOUBLE:
+		return "DOUBLE PRECISION";
+	case LogicalTypeId::TINYINT:
+		return "SMALLINT";
+	case LogicalTypeId::UTINYINT:
+	case LogicalTypeId::USMALLINT:
+	case LogicalTypeId::SQLNULL:
+		return "INTEGER";
+	case LogicalTypeId::UINTEGER:
+		return "BIGINT";
+	case LogicalTypeId::FLOAT:
+		return "REAL";
+	case LogicalTypeId::BLOB:
+	case LogicalTypeId::VARCHAR:
+		return "BYTEA";
+	case LogicalTypeId::UBIGINT:
+	case LogicalTypeId::HUGEINT:
+	case LogicalTypeId::UHUGEINT:
+	case LogicalTypeId::DATE:
+	case LogicalTypeId::TIMESTAMP:
+	case LogicalTypeId::TIMESTAMP_TZ:
+	case LogicalTypeId::TIMESTAMP_TZ_NS:
+	case LogicalTypeId::TIMESTAMP_SEC:
+	case LogicalTypeId::TIMESTAMP_MS:
+	case LogicalTypeId::TIMESTAMP_NS:
+		return "VARCHAR";
+	default:
+		return column_type.ToString();
 	}
 }
 
@@ -40,7 +255,7 @@ unique_ptr<QueryResult> PostgresMetadataManager::ExecuteQuery(DuckLakeSnapshot s
 	auto catalog_literal = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.MetadataDatabaseName());
 	auto schema_identifier = DuckLakeUtil::SQLIdentifierToString(ducklake_catalog.MetadataSchemaName());
 	auto schema_identifier_escaped = StringUtil::Replace(schema_identifier, "'", "''");
-	auto schema_literal = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.MetadataSchemaName());
+	auto schema_literal = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.MetadataSchemaName().GetIdentifierName());
 	auto metadata_path = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.MetadataPath());
 	auto base_data_path = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.BaseDataPath());
 
@@ -51,23 +266,30 @@ unique_ptr<QueryResult> PostgresMetadataManager::ExecuteQuery(DuckLakeSnapshot s
 	query = StringUtil::Replace(query, "{METADATA_SCHEMA_ESCAPED}", schema_identifier_escaped);
 	query = StringUtil::Replace(query, "{METADATA_PATH}", metadata_path);
 	query = StringUtil::Replace(query, "{BASE_DATA_PATH}", base_data_path);
+	query = StringUtil::Replace(query, "{DATA_PATH}", DuckLakeUtil::SQLLiteralToString(ducklake_catalog.DataPath()));
 	auto catalog_id = to_string(ducklake_catalog.CatalogId());
 	query = StringUtil::Replace(query, "{CATALOG_ID}", catalog_id);
 	auto catalog_name = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.CatalogName());
 	query = StringUtil::Replace(query, "{CATALOG_NAME}", catalog_name);
 
-	return connection.Query(StringUtil::Format("CALL %s(%s, %s)", command, catalog_literal, SQLString(query)));
+	auto result =
+	    connection.Query(StringUtil::Format("CALL %s(%s, %s, prepare=%s)", command, catalog_literal, SQLString(query),
+	                                        command == "postgres_query" ? "TRUE" : "FALSE"));
+	return std::move(result);
 }
 unique_ptr<QueryResult> PostgresMetadataManager::Execute(DuckLakeSnapshot snapshot, string &query) {
 	return ExecuteQuery(snapshot, query, "postgres_execute");
 }
 
 unique_ptr<QueryResult> PostgresMetadataManager::Query(DuckLakeSnapshot snapshot, string &query) {
-	return ExecuteQuery(snapshot, query, "postgres_query");
+	return DuckLakeMetadataManager::Query(snapshot, query);
 }
 
-bool PostgresMetadataManager::UseFreshMetadataReads() const {
-	return false;
+void PostgresMetadataManager::ClearCache() {
+	auto result = transaction.ExecuteRaw("CALL pg_clear_cache();");
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to clear the PostgreSQL metadata cache: ");
+	}
 }
 
 string PostgresMetadataManager::GetLatestSnapshotQuery() const {
@@ -82,8 +304,7 @@ string PostgresMetadataManager::GetLatestSnapshotQuery() const {
 }
 
 void PostgresMetadataManager::CreateDuckLakeSchema(DuckLakeEncryption encryption) {
-	throw IOException("DuckLake schema not found. For PostgreSQL, the schema must be created before attaching. "
-	                  "Run: psql -d your_database -f schema/postgresql.sql");
+	throw IOException("Provision DuckLake metadata with Crucible before attaching.");
 }
 
 idx_t PostgresMetadataManager::GetNextSnapshotId() {
@@ -91,7 +312,13 @@ idx_t PostgresMetadataManager::GetNextSnapshotId() {
 	// qualification belongs inside the remote SQL string passed to nextval().
 	string query = "SELECT nextval('{METADATA_SCHEMA_ESCAPED}.ducklake_snapshot_id_seq')";
 	auto current_snapshot = transaction.GetSnapshot();
-	auto result = Query(current_snapshot, query);
+	string guard_query =
+	    "UPDATE {METADATA_CATALOG}.ducklake_metadata SET value=value WHERE catalog_id IS NULL AND key='version'";
+	auto guard = Execute(current_snapshot, guard_query);
+	if (guard->HasError()) {
+		guard->GetErrorObject().Throw("Failed to acquire catalog commit guard: ");
+	}
+	auto result = ExecuteQuery(current_snapshot, query, "postgres_query");
 	if (result->HasError()) {
 		result->GetErrorObject().Throw("Failed to allocate next snapshot ID: ");
 	}
@@ -100,6 +327,26 @@ idx_t PostgresMetadataManager::GetNextSnapshotId() {
 		throw IOException("Failed to allocate next snapshot ID: sequence query returned no rows");
 	}
 	return chunk->GetValue(0, 0).GetValue<idx_t>();
+}
+
+string PostgresMetadataManager::GenerateFileColumnStatsCTEBody(const CTERequirement &req, TableIndex table_id) {
+	auto native_query = GeneratePostgresNativeFileColumnStatsCTEBody(req, table_id);
+	return StringUtil::Format("  SELECT * FROM postgres_query({METADATA_CATALOG_NAME_LITERAL},\n"
+	                          "    %s)\n",
+	                          SQLString(native_query));
+}
+
+string PostgresMetadataManager::GenerateFileListQuery(DuckLakeTableEntry &table, const FilterPushdownInfo *filter_info,
+                                                      const vector<DuckLakeFileListDynamicFilter> &dynamic_filters,
+                                                      const vector<idx_t> &runtime_filter_stats_columns,
+                                                      FileListType file_list_type, const string &,
+                                                      const FileColumnStatsCTEBodyGenerator &) {
+	auto remote_query = DuckLakeMetadataManager::GenerateFileListQuery(
+	    table, filter_info, dynamic_filters, runtime_filter_stats_columns, file_list_type, "{METADATA_SCHEMA_ESCAPED}",
+	    GeneratePostgresNativeFileColumnStatsCTEBody);
+
+	return StringUtil::Format("SELECT * FROM postgres_query({METADATA_CATALOG_NAME_LITERAL}, %s)",
+	                          SQLString(remote_query));
 }
 
 } // namespace duckdb

@@ -2,6 +2,7 @@ add_library(
   ducklake_functions OBJECT
   base_metadata_function.cpp
   ducklake_add_data_files.cpp
+  ducklake_commit.cpp
   ducklake_catalogs.cpp
   ducklake_cleanup_files.cpp
   ducklake_expire_snapshots.cpp
@@ -14,9 +15,11 @@ add_library(
   ducklake_set_option.cpp
   ducklake_snapshots.cpp
   ducklake_options.cpp
+  ducklake_settings.cpp
   ducklake_table_changes.cpp
   ducklake_table_info.cpp
-  ducklake_table_insertions.cpp)
+  ducklake_table_insertions.cpp
+  ducklake_murmur3.cpp)
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:ducklake_functions>
     PARENT_SCOPE)

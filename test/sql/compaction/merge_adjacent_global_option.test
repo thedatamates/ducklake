@@ -6,12 +6,12 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
 
-test-env DATA_PATH __TEST_DIR__
+test-env DATA_PATH {TEST_DIR}
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/merge_adjacent_global_option', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/merge_adjacent_global_option', DATA_INLINING_ROW_LIMIT 0)
 
 statement ok
 use ducklake
@@ -70,16 +70,16 @@ INSERT INTO s1.example_3 (key, value) VALUES ('baz', 'qux');
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-0	2
-1	2
-2	3
-3	3
-4	5
-5	5
-6	6
-7	6
-8	7
-9	7
+0	1
+1	1
+2	2
+3	2
+4	4
+5	4
+6	5
+7	5
+8	6
+9	6
 
 # We define a table_name but not a schema name so we should be able to merge from example_2
 statement ok
@@ -94,35 +94,44 @@ CALL ducklake.set_option('auto_compact', true , schema => 's1', table_name => 'e
 statement ok
 CALL ducklake.set_option('auto_compact', true , schema => 'main', table_name => 'example_2')
 
-statement ok
-CALL ducklake_merge_adjacent_files('ducklake');
+# Both example_2 tables (main and s1) should be merged
+query IIII
+SELECT schema_name, table_name, files_processed, files_created FROM ducklake_merge_adjacent_files('ducklake') ORDER BY ALL
+----
+main	example_2	2	1
+s1	example_2	2	1
 
 # We can set specific tables to be merged
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-0	2
-1	2
-4	5
-5	5
-8	7
-9	7
-10	3
-11	6
+0	1
+1	1
+4	4
+5	4
+8	6
+9	6
+10	2
+11	5
 
 # We can set a whole schema
 statement ok
 CALL ducklake.set_option('auto_compact', true , schema => 's1')
 
-statement ok
-CALL ducklake_merge_adjacent_files('ducklake');
+# All s1 tables with auto_compact=true should be merged (example and example_3)
+# Tables already merged (example_2) don't appear in results
+query IIII
+SELECT schema_name, table_name, files_processed, files_created FROM ducklake_merge_adjacent_files('ducklake') ORDER BY ALL
+----
+s1	example	2	1
+s1	example_3	2	1
 
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-0	2
-1	2
-10	3
-11	6
-12	5
-13	7
+0	1
+1	1
+10	2
+11	5
+12	4
+13	6

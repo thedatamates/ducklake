@@ -6,20 +6,23 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
 
-test-env DATA_PATH __TEST_DIR__
+test-env DATA_PATH {TEST_DIR}
 
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_column_comments_files', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_column_comments_files')
 
 statement ok
 CREATE TABLE ducklake.test_table as SELECT 1 as test_table_column
 
+statement ok
+CALL ducklake_flush_inlined_data('ducklake')
+
 ### Comment on column from table
 query I
-select comment from duckdb_columns() where column_name='test_table_column';
+select comment from duckdb_columns() where column_name='test_table_column' and database_name='ducklake';
 ----
 NULL
 
@@ -27,7 +30,7 @@ statement ok
 COMMENT ON COLUMN ducklake.test_table.test_table_column IS 'very gezellige column'
 
 query I
-select comment from duckdb_columns() where column_name='test_table_column';
+select comment from duckdb_columns() where column_name='test_table_column' and database_name='ducklake';
 ----
 very gezellige column
 
@@ -38,7 +41,7 @@ statement ok
 COMMENT ON COLUMN ducklake.test_table.test_table_column IS 'toch niet zo gezellig'
 
 query I
-select comment from duckdb_columns() where column_name='test_table_column';
+select comment from duckdb_columns() where column_name='test_table_column' and database_name='ducklake';
 ----
 toch niet zo gezellig
 
@@ -47,6 +50,6 @@ statement ok
 ROLLBACK
 
 query I
-select comment from duckdb_columns() where column_name='test_table_column';
+select comment from duckdb_columns() where column_name='test_table_column' and database_name='ducklake';
 ----
 very gezellige column

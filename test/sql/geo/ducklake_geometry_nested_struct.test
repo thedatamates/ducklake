@@ -1,0 +1,48 @@
+# name: test/sql/geo/ducklake_geometry_nested_struct.test
+# group: [geo]
+
+# Stats are not preserved when serialized in the stats() function, so this doesnt work
+require no_alternative_verify
+
+require ducklake
+
+require parquet
+
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
+
+test-env DATA_PATH {TEST_DIR}
+
+statement ok
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{TEST_DIR}/ducklake_files', METADATA_CATALOG 'ducklake_meta')
+
+statement ok
+USE ducklake;
+
+
+############################
+### STRUCT of geometry types
+############################
+
+statement ok
+CHECKPOINT;
+
+statement ok
+create table t2 (g struct(a GEOMETRY));
+
+statement ok
+insert into t2 VALUES ({'a': 'POINT(1 2)'::GEOMETRY});
+
+query I
+select * from t2;
+----
+{'a': 'POINT (1 2)'}
+
+query I
+SELECT stats(g) FROM t2;
+----
+{'child_stats': {'a': {'extent': {'x_max': 1.0, 'x_min': 1.0, 'y_max': 2.0, 'y_min': 2.0}, 'has_empty_geom': true, 'has_empty_part': true, 'has_no_null': true, 'has_non_empty_geom': true, 'has_non_empty_part': true, 'has_null': false}}, 'has_no_null': true, 'has_null': true}
+
+query I
+select extra_stats from ducklake_meta.ducklake_file_column_stats;
+----
+{"bbox": {"xmin": 1.000000, "xmax": 1.000000, "ymin": 2.000000, "ymax": 2.000000, "zmin": null, "zmax": null, "mmin": null, "mmax": null}, "types": ["point"]}

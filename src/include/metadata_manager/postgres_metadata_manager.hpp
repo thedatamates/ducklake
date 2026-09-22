@@ -16,20 +16,38 @@ class PostgresMetadataManager : public DuckLakeMetadataManager {
 public:
 	explicit PostgresMetadataManager(DuckLakeTransaction &transaction);
 
+	static unique_ptr<DuckLakeMetadataManager> Create(DuckLakeTransaction &transaction) {
+		return make_uniq<PostgresMetadataManager>(transaction);
+	}
+
 	bool TypeIsNativelySupported(const LogicalType &type) override;
+	bool SupportsAppender() const override {
+		return false;
+	}
+	idx_t MaxIdentifierLength() const override {
+		return 63;
+	}
+
+	string GetColumnTypeInternal(const LogicalType &type) override;
 
 	unique_ptr<QueryResult> Execute(DuckLakeSnapshot snapshot, string &query) override;
 
 	unique_ptr<QueryResult> Query(DuckLakeSnapshot snapshot, string &query) override;
 
+	void ClearCache() override;
 	void CreateDuckLakeSchema(DuckLakeEncryption encryption) override;
-	//! PostgreSQL metadata queries are executed through postgres_query/postgres_execute where
-	//! the catalog/database is provided out-of-band. This override schema-qualifies the sequence.
 	idx_t GetNextSnapshotId() override;
 
 protected:
-	bool UseFreshMetadataReads() const override;
 	string GetLatestSnapshotQuery() const override;
+	string GenerateFileColumnStatsCTEBody(const CTERequirement &req, TableIndex table_id) override;
+	string GenerateFileListQuery(DuckLakeTableEntry &table, const FilterPushdownInfo *filter_info,
+	                             const vector<DuckLakeFileListDynamicFilter> &dynamic_filters,
+	                             const vector<idx_t> &runtime_filter_stats_columns, FileListType file_list_type,
+	                             const string &metadata_table_prefix,
+	                             const FileColumnStatsCTEBodyGenerator &generate_cte_body) override;
+	string CastValueToTarget(const Value &value, const LogicalType &type) override;
+	string CastStatsToTarget(const string &stats, const LogicalType &type, StatsCastType cast_type) override;
 
 private:
 	unique_ptr<QueryResult> ExecuteQuery(DuckLakeSnapshot snapshot, string &query, string command);

@@ -1,0 +1,32 @@
+{
+  "description": "Run DuckLake tests with deletion vectors enabled (puffin format instead of parquet delete files).",
+  "on_init": "SET ducklake_write_deletion_vectors = true;",
+  "statically_loaded_extensions": [
+    "core_functions",
+    "parquet",
+    "ducklake",
+    "icu"
+  ],
+  "skip_tests": [
+    {
+      "reason": "Parquet is statically loaded in this config, test requires missing parquet",
+      "paths": [
+        "test/sql/general/missing_parquet.test"
+      ]
+    },
+    {
+      "reason": "Deletion vectors are written as puffin files, not *-del*.parquet, so the parquet glob assertion does not apply",
+      "paths": [
+        "test/sql/encryption/encryption.test",
+        "test/sql/rewrite_data_files/test_rewrite_rollback_cleanup.test"
+      ]
+    },
+    {
+      "reason": "Reads the delete file directly as parquet (DESCRIBE/SELECT of *-delete.parquet) to inspect its columns/contents",
+      "paths": [
+        "test/sql/delete/parquet_deletion_describe.test",
+        "test/sql/deletion_inlining/test_deletion_inlining_encryption.test"
+      ]
+    }
+  ]
+}

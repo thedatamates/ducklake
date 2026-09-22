@@ -1,210 +1,53 @@
 # Building DuckLake
 
-This is a fork of [duckdb/ducklake](https://github.com/duckdb/ducklake) with additional features:
-- Multi-tenant catalog isolation
-- Catalog forking
-- Global snapshots
+Build the extension, DuckDB runtime and PostgreSQL scanner together. An official upstream extension or separately installed DuckDB is not a substitute for this build.
 
-## Released vs Development Version
+## Pinned dependencies
 
-**Released DuckLake** (works with DuckDB v1.3.0+):
-```sql
-INSTALL ducklake;
-LOAD ducklake;
-```
+| Dependency | Commit |
+|---|---|
+| DuckDB | `ef853aebf803cc4f7738ffc34859227f5ebb6437` |
+| extension-ci-tools | `795096d04b009c0d087468439ebb526a5460dfac` |
+| DuckLake upstream baseline | `7963da4265c0ed09681821a0f3a158b17573ded4` |
 
-This installs the official released version from the DuckDB extension repository.
-
-**This fork** (requires building from source):
-```bash
-make release
-./build/release/duckdb -unsigned
-```
-
-The fork includes features not yet in the released version and tracks DuckDB's development branch.
-
-## Why Build From Source?
-
-Both the upstream `duckdb/ducklake` main branch and this fork track DuckDB's v1.5.0 development branch. The code uses APIs (like `QueryResultRow::GetRowInChunk()`) that don't exist in released DuckDB versions.
+The tested engine reports `v2.0.0-dev84705`. The PostgreSQL scanner pinned by the extension configuration requires libpq 18. Local macOS validation used Homebrew `croaring` 5.2.2 and libpq 18.6.
 
 ```bash
-git -C duckdb describe --tags
-# v1.4.2-3132-g5d5d04f418  (v1.5.0-dev)
-```
-
-Once DuckDB v1.5.0 is released, upstream will likely pin to it and release a new extension version. Until then, building from source requires using the bundled DuckDB binary.
-
-## Build Targets
-
-```bash
-make release      # optimized build
-make debug        # debug build with symbols
-make clean        # remove build artifacts
-make test_release # run tests against release build
-make test_debug   # run tests against debug build
-```
-
-## Output Files
-
-After building:
-
-```
-build/release/
-├── duckdb                                    # DuckDB CLI binary
-├── extension/
-│   ├── ducklake/
-│   │   └── ducklake.duckdb_extension        # DuckLake extension
-│   ├── postgres_scanner/
-│   │   └── postgres_scanner.duckdb_extension # PostgreSQL extension (if enabled)
-│   ├── parquet/
-│   ├── json/
-│   └── ...
-└── repository/                               # Extension repository format
-```
-
-## Building with PostgreSQL Support
-
-PostgreSQL metadata support requires the `postgres_scanner` extension:
-
-```bash
-ENABLE_POSTGRES_SCANNER=1 make release
-```
-
-This fetches and builds `postgres_scanner` from the DuckDB postgres extension repository.
-
-## Using the Extension
-
-### With Built DuckDB Binary
-
-```bash
-./build/release/duckdb -unsigned
-```
-
-The `-unsigned` flag allows loading locally-built extensions.
-
-```sql
-LOAD 'build/release/extension/ducklake/ducklake.duckdb_extension';
-
--- Create a DuckLake catalog with local metadata
-ATTACH 'ducklake:/tmp/my_lakehouse.db' AS lake (
-  DATA_PATH '/tmp/lakehouse_data',
-  CATALOG 'my-catalog',
-  CREATE_IF_NOT_EXISTS true
-);
-USE lake;
-
-CREATE TABLE events (id INT, ts TIMESTAMP);
-INSERT INTO events VALUES (1, NOW());
-SELECT * FROM events;
-```
-
-### With PostgreSQL Metadata
-
-```sql
-LOAD 'build/release/extension/ducklake/ducklake.duckdb_extension';
-LOAD 'build/release/extension/postgres_scanner/postgres_scanner.duckdb_extension';
-
-ATTACH 'ducklake:postgres:dbname=mydb user=myuser' AS lake (
-  DATA_PATH '/data/lakehouse',
-  METADATA_SCHEMA 'ducklake',
-  CATALOG 'my-catalog',
-  CREATE_IF_NOT_EXISTS true
-);
-```
-
-See [POSTGRESQL.md](POSTGRESQL.md) for PostgreSQL setup instructions.
-
-## Why Not System DuckDB?
-
-DuckLake uses internal DuckDB APIs that change between versions. The extension is compiled against a specific DuckDB version and will only load in that exact version.
-
-```bash
-# This won't work - version mismatch
-duckdb -unsigned -c "LOAD 'build/release/extension/ducklake/ducklake.duckdb_extension'"
-# Error: The file was built specifically for DuckDB version '5d5d04f418'
-```
-
-When DuckLake is released to the extension repository, it will be built against released DuckDB versions and `INSTALL ducklake` will work normally.
-
-## Updating DuckDB Version
-
-The DuckDB version is controlled by the `duckdb` submodule:
-
-```bash
-# Check current version
-git -C duckdb describe --tags
-
-# Update to a specific version
-git -C duckdb fetch --tags
-git -C duckdb checkout v1.4.3
-make clean release
-```
-
-Note: Changing DuckDB versions may require code changes if APIs differ.
-
-## Building Against Released DuckDB
-
-To build against a released DuckDB version (e.g., for distribution):
-
-```bash
-git -C duckdb checkout v1.4.3
-make clean release
-```
-
-If there are API incompatibilities, you'll see errors like:
-
-```
-error: no member named 'GetChunk' in 'duckdb::QueryResult::QueryResultRow'
-```
-
-These require code changes to use the API available in that DuckDB version.
-
-## Submodules
-
-```bash
-# Initialize submodules (first time)
 git submodule update --init --recursive
-
-# Reset submodule to committed version
-git submodule update --init duckdb
+ENABLE_POSTGRES_SCANNER=1 CMAKE_BUILD_PARALLEL_LEVEL=8 GEN=ninja make release
 ```
 
-## Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `ENABLE_POSTGRES_SCANNER` | Set to `1` to build postgres_scanner extension |
-| `ENABLE_SQLITE_SCANNER` | Set to `1` to build sqlite_scanner extension |
-| `GEN` | Set to `ninja` to use Ninja instead of Make |
-
-## Troubleshooting
-
-### "Extension not found"
-
-Make sure you're using the DuckDB built with the project:
+If CMake selects an older PostgreSQL installation on macOS, configure its paths explicitly after generating the build directory:
 
 ```bash
-./build/release/duckdb -unsigned
+ENABLE_POSTGRES_SCANNER=1 cmake -S duckdb -B build/release \
+  -DPostgreSQL_LIBRARY=/opt/homebrew/opt/libpq/lib/libpq.dylib \
+  -DPostgreSQL_INCLUDE_DIR=/opt/homebrew/opt/libpq/include
+ENABLE_POSTGRES_SCANNER=1 CMAKE_BUILD_PARALLEL_LEVEL=8 cmake --build build/release
 ```
 
-Not the system `duckdb` command.
+## Runtime outputs
 
-### "The file was built specifically for DuckDB version X"
+| Output | Purpose |
+|---|---|
+| `build/release/duckdb` | Matched SQL shell |
+| `build/release/src/libduckdb` with platform suffix | Runtime library linked by Crucible |
+| `build/release/extension/` | Matched DuckLake, PostgreSQL and other built extensions |
+| `duckdb/src/include/` | Headers for external Rust linking |
 
-Version mismatch. Use the bundled DuckDB binary or rebuild against your DuckDB version.
+Crucible disables the bundled engine feature of `agent-data-duck`. Set `DUCKDB_LIB_DIR` to this build's `src` directory and `DUCKDB_INCLUDE_DIR` to the pinned headers. Its README documents runtime loading and isolated integration-test settings. Other Monogram packages may enable the bundled engine; build Crucible separately from those packages so Cargo feature unification does not re-enable it.
 
-### postgres_scanner build fails
-
-The postgres_scanner patches may not exist for all DuckDB versions. Try building without it:
+## Verification
 
 ```bash
-make clean release  # without ENABLE_POSTGRES_SCANNER
+./build/release/test/unittest test/sql/multi_catalog/managed_catalogs.test
+make format-fix
 ```
 
-### Submodule at wrong commit
-
-Reset to the committed version:
+The formatter needs Black, clang-format 11 and cmake-format. An isolated invocation used during validation was:
 
 ```bash
-git submodule update --init duckdb
+uv run --with 'black>=24' --with 'clang-format==11.0.1' --with cmake-format make format-fix
 ```
+
+The managed-catalog test passed 45 assertions. The matched build passed 65 Crucible integration tests, including PostgreSQL forks and mixed writers. The full upstream test suite is not adapted to Crucible-managed provisioning. Production packaging and the legacy Crucible Dockerfile have not been validated for this runtime.

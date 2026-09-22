@@ -5,12 +5,12 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
 
-test-env DATA_PATH __TEST_DIR__
+test-env DATA_PATH {TEST_DIR}
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/test_multiple_implementations', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/test_multiple_implementations');
 
 statement ok
 use ducklake
@@ -24,40 +24,40 @@ CREATE MACRO multi_add
 	(a, b, c, d) AS  a + b + c + d,
 	(a, b, c, d, e) AS  a + b + c + d + e
 
-query IIIIII
+query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro;
 ----
-0	1	2	multi_add	2	NULL
+0	1	multi_add	1	NULL
 
-query IIIIII
+query IIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_impl;
 ----
-0	2	0	duckdb	0	scalar
-0	2	1	duckdb	a	scalar
-0	2	2	duckdb	(a + b)	scalar
-0	2	3	duckdb	((a + b) + c)	scalar
-0	2	4	duckdb	(((a + b) + c) + d)	scalar
-0	2	5	duckdb	((((a + b) + c) + d) + e)	scalar
+1	0	duckdb	0	scalar
+1	1	duckdb	a	scalar
+1	2	duckdb	(a + b)	scalar
+1	3	duckdb	((a + b) + c)	scalar
+1	4	duckdb	(((a + b) + c) + d)	scalar
+1	5	duckdb	((((a + b) + c) + d) + e)	scalar
 
 
-query IIIIIIII
+query IIIIIII
 FROM __ducklake_metadata_ducklake.ducklake_macro_parameters;
 ----
-0	2	1	0	a	unknown	NULL	unknown
-0	2	2	0	a	unknown	NULL	unknown
-0	2	2	1	b	unknown	NULL	unknown
-0	2	3	0	a	unknown	NULL	unknown
-0	2	3	1	b	unknown	NULL	unknown
-0	2	3	2	c	unknown	NULL	unknown
-0	2	4	0	a	unknown	NULL	unknown
-0	2	4	1	b	unknown	NULL	unknown
-0	2	4	2	c	unknown	NULL	unknown
-0	2	4	3	d	unknown	NULL	unknown
-0	2	5	0	a	unknown	NULL	unknown
-0	2	5	1	b	unknown	NULL	unknown
-0	2	5	2	c	unknown	NULL	unknown
-0	2	5	3	d	unknown	NULL	unknown
-0	2	5	4	e	unknown	NULL	unknown
+1	1	0	a	unknown	NULL	unknown
+1	2	0	a	unknown	NULL	unknown
+1	2	1	b	unknown	NULL	unknown
+1	3	0	a	unknown	NULL	unknown
+1	3	1	b	unknown	NULL	unknown
+1	3	2	c	unknown	NULL	unknown
+1	4	0	a	unknown	NULL	unknown
+1	4	1	b	unknown	NULL	unknown
+1	4	2	c	unknown	NULL	unknown
+1	4	3	d	unknown	NULL	unknown
+1	5	0	a	unknown	NULL	unknown
+1	5	1	b	unknown	NULL	unknown
+1	5	2	c	unknown	NULL	unknown
+1	5	3	d	unknown	NULL	unknown
+1	5	4	e	unknown	NULL	unknown
 
 query I
 SELECT multi_add();

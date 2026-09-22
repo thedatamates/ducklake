@@ -9,12 +9,12 @@ require parquet
 require icu
 
 # partitioning based on a column
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
 
-test-env DATA_PATH __TEST_DIR__
+test-env DATA_PATH {TEST_DIR}
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/remove_orphaned_files', METADATA_CATALOG 'ducklake_metadata', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/remove_orphaned_files', METADATA_CATALOG 'ducklake_metadata')
 
 statement ok
 USE ducklake
@@ -26,26 +26,33 @@ statement ok
 insert into test values (1);
 
 statement ok
+CALL ducklake_flush_inlined_data('ducklake')
+
+statement ok
 insert into test values (2);
 
 statement ok
-CALL ducklake_merge_adjacent_files('ducklake');
+CALL ducklake_flush_inlined_data('ducklake')
+
+query III
+SELECT table_name, files_processed, files_created FROM ducklake_merge_adjacent_files('ducklake')
+----
+test	2	1
 
 # Add orphaned file
 statement ok
-COPY test to '${DATA_PATH}/remove_orphaned_files/test/main/test/bla.parquet';
+COPY test to '{DATA_PATH}/remove_orphaned_files/main/test/bla.parquet';
 
-# We should have 4 files (2 original + 1 merged + 1 orphan)
+# We should have 3 files
 query I
-SELECT COUNT(*) FROM GLOB('${DATA_PATH}/remove_orphaned_files/test/main/test/*')
+SELECT COUNT(*) FROM GLOB('{DATA_PATH}/remove_orphaned_files/main/test/*')
 ----
 4
 
 statement ok
 CALL ducklake.set_option('delete_older_than', '1 week')
 
-# Check preference of manually set option - finds only 1 orphan (the manual bla.parquet)
-# Merged files are tracked in scheduled_for_deletion and are NOT orphans
+# Check preference of manually set option
 query I
 SELECT count(*) FROM ducklake_delete_orphaned_files('ducklake', cleanup_all => true, dry_run => true);
 ----
@@ -73,6 +80,9 @@ query I
 SELECT ends_with(path,'bla.parquet') FROM ducklake_delete_orphaned_files('ducklake', cleanup_all => true, dry_run => true);
 ----
 True
+
+statement ok
+LOAD icu
 
 # Check older_than filter
 query I

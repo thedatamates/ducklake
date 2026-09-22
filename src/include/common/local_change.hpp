@@ -26,7 +26,8 @@ enum class LocalChangeType {
 	ADD_COLUMN,
 	REMOVE_COLUMN,
 	CHANGE_COLUMN_TYPE,
-	SET_DEFAULT
+	SET_DEFAULT,
+	SET_SORT_KEY
 };
 
 struct LocalChange {
@@ -37,10 +38,17 @@ struct LocalChange {
 	LocalChangeType type;
 	//! For operations that alter individual columns
 	FieldIndex field_index;
+	//! For SET_COLUMN_COMMENT on views
+	string view_column_comment_name;
 
 	static LocalChange SetColumnComment(FieldIndex field_idx) {
 		LocalChange result(LocalChangeType::SET_COLUMN_COMMENT);
 		result.field_index = field_idx;
+		return result;
+	}
+	static LocalChange SetViewColumnComment(const string &column_name) {
+		LocalChange result(LocalChangeType::SET_COLUMN_COMMENT);
+		result.view_column_comment_name = column_name;
 		return result;
 	}
 	static LocalChange SetNull(FieldIndex field_idx) {
@@ -50,11 +58,6 @@ struct LocalChange {
 	}
 	static LocalChange DropNull(FieldIndex field_idx) {
 		LocalChange result(LocalChangeType::DROP_NULL);
-		result.field_index = field_idx;
-		return result;
-	}
-	static LocalChange SetDefault(FieldIndex field_idx) {
-		LocalChange result(LocalChangeType::SET_DEFAULT);
 		result.field_index = field_idx;
 		return result;
 	}
@@ -70,4 +73,16 @@ struct LocalChange {
 	}
 };
 
+struct SetDefaultLocalChange : LocalChange {
+	explicit SetDefaultLocalChange(bool is_column_new)
+	    : LocalChange(LocalChangeType::SET_DEFAULT), is_column_new(is_column_new) {};
+
+	static SetDefaultLocalChange SetDefault(FieldIndex field_idx, bool is_column_new) {
+		SetDefaultLocalChange result(is_column_new);
+		result.field_index = field_idx;
+		return result;
+	}
+
+	bool is_column_new;
+};
 } // namespace duckdb

@@ -5,8 +5,8 @@
 namespace duckdb {
 
 static unique_ptr<FunctionData> DuckLakeCatalogsBind(ClientContext &context, TableFunctionBindInput &input,
-                                                      vector<LogicalType> &return_types, vector<string> &names) {
-	auto &catalog = BaseMetadataFunction::GetCatalog(context, input.inputs[0]);
+                                                     vector<LogicalType> &return_types, vector<Identifier> &names) {
+	auto &catalog = DuckLakeBaseMetadataFunction::GetCatalog(context, input.inputs[0]);
 	auto &transaction = DuckLakeTransaction::Get(context, catalog);
 
 	// Define return columns
@@ -45,12 +45,12 @@ ORDER BY catalog_id
 	while ((chunk = result->Fetch()) && chunk->size() > 0) {
 		for (idx_t row = 0; row < chunk->size(); row++) {
 			vector<Value> row_values;
-			row_values.push_back(chunk->GetValue(0, row));  // catalog_id
-			row_values.push_back(chunk->GetValue(1, row));  // catalog_name
-			row_values.push_back(chunk->GetValue(2, row));  // catalog_uuid
-			row_values.push_back(chunk->GetValue(3, row));  // parent_catalog_id (NULL for root)
-			row_values.push_back(chunk->GetValue(4, row));  // begin_snapshot
-			row_values.push_back(chunk->GetValue(5, row));  // end_snapshot (NULL for active)
+			row_values.push_back(chunk->GetValue(0, row)); // catalog_id
+			row_values.push_back(chunk->GetValue(1, row)); // catalog_name
+			row_values.push_back(chunk->GetValue(2, row)); // catalog_uuid
+			row_values.push_back(chunk->GetValue(3, row)); // parent_catalog_id (NULL for root)
+			row_values.push_back(chunk->GetValue(4, row)); // begin_snapshot
+			row_values.push_back(chunk->GetValue(5, row)); // end_snapshot (NULL for active)
 			bind_data->rows.push_back(std::move(row_values));
 		}
 	}
@@ -59,7 +59,7 @@ ORDER BY catalog_id
 }
 
 DuckLakeCatalogsFunction::DuckLakeCatalogsFunction()
-    : BaseMetadataFunction("ducklake_catalogs", DuckLakeCatalogsBind) {
+    : DuckLakeBaseMetadataFunction("ducklake_catalogs", DuckLakeCatalogsBind) {
 }
 
 } // namespace duckdb

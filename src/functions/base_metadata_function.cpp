@@ -1,17 +1,18 @@
 #include "functions/ducklake_table_functions.hpp"
+#include "duckdb/catalog/catalog.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database_manager.hpp"
 
 namespace duckdb {
 
-Catalog &BaseMetadataFunction::GetCatalog(ClientContext &context, const Value &input) {
+Catalog &DuckLakeBaseMetadataFunction::GetCatalog(ClientContext &context, const Value &input) {
 	if (input.IsNull()) {
 		throw BinderException("Catalog cannot be NULL");
 	}
 	// look up the database to query
 	auto db_name = input.GetValue<string>();
 	auto &db_manager = DatabaseManager::Get(context);
-	auto db = db_manager.GetDatabase(context, db_name);
+	auto db = db_manager.GetDatabase(context, Identifier(db_name));
 	if (!db) {
 		throw BinderException("Failed to find attached database \"%s\"", db_name);
 	}
@@ -29,16 +30,18 @@ struct MetadataFunctionData : public GlobalTableFunctionState {
 	idx_t offset;
 };
 
-unique_ptr<GlobalTableFunctionState> MetadataFunctionInit(ClientContext &context, TableFunctionInitInput &input) {
+static unique_ptr<GlobalTableFunctionState> MetadataFunctionInit(ClientContext &context,
+                                                                 TableFunctionInitInput &input) {
 	auto result = make_uniq<MetadataFunctionData>();
 	return std::move(result);
 }
 
-void MetadataFunctionExecute(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+static void MetadataFunctionExecute(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &data = data_p.bind_data->Cast<MetadataBindData>();
 	auto &state = data_p.global_state->Cast<MetadataFunctionData>();
 	if (state.offset >= data.rows.size()) {
 		// finished returning values
+		output.SetChildCardinality(0);
 		return;
 	}
 	// start returning values
@@ -51,14 +54,14 @@ void MetadataFunctionExecute(ClientContext &context, TableFunctionInput &data_p,
 		}
 
 		for (idx_t c = 0; c < entry.size(); c++) {
-			output.SetValue(c, count, entry[c]);
+			output.data[c].Append(entry[c]);
 		}
 		count++;
 	}
-	output.SetCardinality(count);
+	output.SetChildCardinality(count);
 }
 
-BaseMetadataFunction::BaseMetadataFunction(string name_p, table_function_bind_t bind)
+DuckLakeBaseMetadataFunction::DuckLakeBaseMetadataFunction(Identifier name_p, table_function_bind_t bind)
     : TableFunction(std::move(name_p), {LogicalType::VARCHAR}, MetadataFunctionExecute, bind, MetadataFunctionInit) {
 }
 

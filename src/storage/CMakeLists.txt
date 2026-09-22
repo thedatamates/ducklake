@@ -1,3 +1,4 @@
+add_subdirectory(statistics)
 add_library(
   ducklake_storage OBJECT
   ducklake_catalog.cpp
@@ -6,8 +7,10 @@ add_library(
   ducklake_delete_filter.cpp
   ducklake_field_data.cpp
   ducklake_inline_data.cpp
+  ducklake_inlined_data.cpp
   ducklake_inlined_data_reader.cpp
   ducklake_insert.cpp
+  ducklake_log_type.cpp
   ducklake_merge_into.cpp
   ducklake_schema_entry.cpp
   ducklake_transaction_manager.cpp
@@ -16,8 +19,14 @@ add_library(
   ducklake_multi_file_list.cpp
   ducklake_storage.cpp
   ducklake_delete.cpp
+  ducklake_deletion_vector.cpp
   ducklake_multi_file_reader.cpp
+  ducklake_partition_data.cpp
+  ducklake_puffin.cpp
   ducklake_secret.cpp
+  ducklake_sort_data.cpp
+  ducklake_server_side_commit.cpp
+  ducklake_staged_commit.cpp
   ducklake_stats.cpp
   ducklake_table_entry.cpp
   ducklake_initializer.cpp
@@ -25,6 +34,7 @@ add_library(
   ducklake_update.cpp
   ducklake_scan.cpp
   ducklake_transaction.cpp
+  ducklake_transaction_state.cpp
   ducklake_view_entry.cpp
   ducklake_transaction_changes.cpp)
 set(ALL_OBJECT_FILES

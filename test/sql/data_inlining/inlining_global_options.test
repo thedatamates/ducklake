@@ -6,12 +6,12 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
 
-test-env DATA_PATH __TEST_DIR__
+test-env DATA_PATH {TEST_DIR}
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/inlining_global_options', DATA_INLINING_ROW_LIMIT 2, CATALOG 'test', CREATE_IF_NOT_EXISTS true);
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/inlining_global_options', DATA_INLINING_ROW_LIMIT 2)
 
 statement ok
 use ducklake
@@ -80,52 +80,61 @@ CALL ducklake.set_option('auto_compact', false, schema=> 's1')
 statement ok
 CALL ducklake.set_option('auto_compact', true, schema=> 'main', table_name =>'example_2')
 
-statement ok
-CALL ducklake_flush_inlined_data('ducklake');
+query III
+SELECT schema_name, table_name, rows_flushed FROM ducklake_flush_inlined_data('ducklake')
+----
+main	example_2	2
 
-# We write a new file for table id 3
+# We write a new file for table id 2
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-10	3
+10	2
 
 statement ok
 CALL ducklake.set_option('auto_compact', true, schema=> 's1', table_name =>'example_2')
 
-statement ok
-CALL ducklake_flush_inlined_data('ducklake');
+query III
+SELECT schema_name, table_name, rows_flushed FROM ducklake_flush_inlined_data('ducklake') ORDER BY ALL
+----
+s1	example_2	2
 
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-10	3
-11	6
+10	2
+11	5
 
 statement ok
 CALL ducklake.set_option('auto_compact', true, schema=> 's1')
 
-statement ok
-CALL ducklake_flush_inlined_data('ducklake');
+query III
+SELECT schema_name, table_name, rows_flushed FROM ducklake_flush_inlined_data('ducklake') ORDER BY ALL
+----
+s1	example	2
+s1	example_3	2
 
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-10	3
-11	6
-12	5
-13	7
+10	2
+11	5
+12	4
+13	6
 
 statement ok
 CALL ducklake.set_option('auto_compact', true, schema=> 'main')
 
-statement ok
-CALL ducklake_flush_inlined_data('ducklake');
+query III
+SELECT schema_name, table_name, rows_flushed FROM ducklake_flush_inlined_data('ducklake') ORDER BY ALL
+----
+main	example	2
 
 query II
 SELECT data_file_id, table_id FROM __ducklake_metadata_ducklake.ducklake_data_file
 ----
-10	3
-11	6
-12	5
-13	7
-14	2
+10	2
+11	5
+12	4
+13	6
+14	1

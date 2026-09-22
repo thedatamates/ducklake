@@ -11,20 +11,25 @@ if(NOT DEFINED ENV{DISABLE_EXTENSIONS_FOR_TEST})
     duckdb_extension_load(tpch)
 endif()
 
+set(EXTENSION_CONFIG_BASE_DIR "${CMAKE_CURRENT_LIST_DIR}/.github/config/extensions/")
 if($ENV{ENABLE_SQLITE_SCANNER})
-    duckdb_extension_load(sqlite_scanner
-        DONT_LINK
-        APPLY_PATCHES
-        GIT_URL https://github.com/duckdb/duckdb-sqlite
-        GIT_TAG 833e105cbcaa0f6e8d34d334f3b920ce86f6fdf9
-    )
+    include("${EXTENSION_CONFIG_BASE_DIR}/sqlite_scanner.cmake")
 endif()
 
 if($ENV{ENABLE_POSTGRES_SCANNER})
-    duckdb_extension_load(postgres_scanner
-        DONT_LINK
-        APPLY_PATCHES
-        GIT_URL https://github.com/duckdb/duckdb-postgres
-        GIT_TAG f012a4f99cea1d276d1787d0dc84b1f1a0e0f0b2
+    include("${EXTENSION_CONFIG_BASE_DIR}/postgres_scanner.cmake")
+endif()
+
+if($ENV{ENABLE_QUACK})
+    include_directories(
+            ${CMAKE_CURRENT_LIST_DIR}/duckdb/third_party/httplib
+            ${CMAKE_CURRENT_LIST_DIR}/duckdb/extension/autocomplete/include
+    )
+    duckdb_extension_load(quack
+            LOAD_TESTS
+            GIT_URL https://github.com/duckdb/duckdb-quack.git
+            GIT_TAG 984d45d27e4042906328fb2bd0cdb631d0e602a7
+            SUBMODULES "extension-ci-tools"
+            APPLY_PATCHES
     )
 endif()

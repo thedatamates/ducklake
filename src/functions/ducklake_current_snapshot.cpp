@@ -8,8 +8,9 @@
 namespace duckdb {
 
 static unique_ptr<FunctionData> DuckLakeCurrentSnapshotBind(ClientContext &context, TableFunctionBindInput &input,
-                                                            vector<LogicalType> &return_types, vector<string> &names) {
-	auto &catalog = BaseMetadataFunction::GetCatalog(context, input.inputs[0]);
+                                                            vector<LogicalType> &return_types,
+                                                            vector<Identifier> &names) {
+	auto &catalog = DuckLakeBaseMetadataFunction::GetCatalog(context, input.inputs[0]);
 	auto &transaction = DuckLakeTransaction::Get(context, catalog);
 
 	names.emplace_back("id");
@@ -24,7 +25,7 @@ static unique_ptr<FunctionData> DuckLakeCurrentSnapshotBind(ClientContext &conte
 }
 
 DuckLakeCurrentSnapshotFunction::DuckLakeCurrentSnapshotFunction()
-    : BaseMetadataFunction("ducklake_current_snapshot", DuckLakeCurrentSnapshotBind) {
+    : DuckLakeBaseMetadataFunction("ducklake_current_snapshot", DuckLakeCurrentSnapshotBind) {
 }
 
 } // namespace duckdb

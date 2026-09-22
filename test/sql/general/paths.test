@@ -6,13 +6,13 @@ require ducklake
 
 require parquet
 
-test-env DUCKLAKE_CONNECTION __TEST_DIR__/{UUID}.db
+test-env DUCKLAKE_CONNECTION {TEST_DIR}/{UUID}.db
 
-test-env DATA_PATH __TEST_DIR__
+test-env DATA_PATH {TEST_DIR}
 
 
 statement ok
-ATTACH 'ducklake:${DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '${DATA_PATH}/ducklake_paths_files', METADATA_CATALOG 'ducklake_meta', CATALOG 'test', CREATE_IF_NOT_EXISTS true);
+ATTACH 'ducklake:{DUCKLAKE_CONNECTION}' AS ducklake (DATA_PATH '{DATA_PATH}/ducklake_paths_files', METADATA_CATALOG 'ducklake_meta')
 
 # built-in paths
 statement ok
@@ -21,8 +21,12 @@ CREATE TABLE ducklake.test(i INTEGER, j INTEGER);
 statement ok
 INSERT INTO ducklake.test VALUES (1, 2), (NULL, 3);
 
+# flush inlined data to create files
+statement ok
+CALL ducklake_flush_inlined_data('ducklake')
+
 query I
-SELECT COUNT(*) FROM glob('${DATA_PATH}/ducklake_paths_files/**') WHERE 'test' IN file
+SELECT COUNT(*) FROM glob('{DATA_PATH}/ducklake_paths_files/**') WHERE 'test' IN file
 ----
 1
 
@@ -35,7 +39,7 @@ correct
 query II
 SELECT path, path_is_relative FROM ducklake_meta.ducklake_schema
 ----
-test/main/	true
+main/	true
 
 query II
 SELECT path, path_is_relative FROM ducklake_meta.ducklake_table
@@ -57,8 +61,12 @@ CREATE TABLE ducklake.s1.test(i INTEGER);
 statement ok
 INSERT INTO ducklake.s1.test VALUES (42);
 
+# flush inlined data to create files
+statement ok
+CALL ducklake_flush_inlined_data('ducklake')
+
 query I
-SELECT COUNT(*) FROM glob('${DATA_PATH}/ducklake_paths_files/**') WHERE 's1' IN file
+SELECT COUNT(*) FROM glob('{DATA_PATH}/ducklake_paths_files/**') WHERE 's1' IN file
 ----
 1
 

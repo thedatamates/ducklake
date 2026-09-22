@@ -9,6 +9,8 @@
 #pragma once
 
 #include "duckdb/catalog/catalog_entry/view_catalog_entry.hpp"
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/common/mutex.hpp"
 #include "common/index.hpp"
 #include "common/local_change.hpp"
@@ -16,6 +18,7 @@
 
 namespace duckdb {
 struct SetCommentInfo;
+struct SetColumnCommentInfo;
 class DuckLakeTransaction;
 
 class DuckLakeViewEntry : public ViewCatalogEntry {
@@ -36,37 +39,34 @@ public:
 	LocalChange GetLocalChange() const {
 		return local_change;
 	}
-	bool IsBound() const;
-
-	void Bind(ClientContext &context);
 
 public:
 	unique_ptr<CatalogEntry> AlterEntry(ClientContext &context, AlterInfo &info) override;
 	unique_ptr<CatalogEntry> Copy(ClientContext &context) const override;
 
 	const SelectStatement &GetQuery() override;
-	bool HasTypes() const override {
-		return false;
-	}
 	unique_ptr<CreateInfo> GetInfo() const override;
 	string ToSQL() const override;
 
-	string GetQuerySQL();
+	void BindView(ClientContext &context, BindViewAction action = BindViewAction::BIND_IF_UNBOUND) override;
+
+	string GetQuerySQL() const;
 
 public:
 	// ALTER VIEW
 	DuckLakeViewEntry(DuckLakeViewEntry &parent, CreateViewInfo &info, LocalChange local_change);
 
+	unique_ptr<CatalogEntry> Alter(DuckLakeTransaction &transaction, SetColumnCommentInfo &info);
+
 private:
 	unique_ptr<SelectStatement> ParseSelectStatement() const;
 
 private:
-	mutex parse_lock;
+	mutable mutex lock;
 	TableIndex view_id;
 	string view_uuid;
 	string query_sql;
 	LocalChange local_change;
-	bool is_bound = false;
 };
 
 } // namespace duckdb

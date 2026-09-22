@@ -1,5 +1,7 @@
 # Building DuckLake in Rust: Feasibility Research
 
+Research provenance: this analysis was present at fork commit `4ccee75fe091291ad722c41363c0cdc145ae9bad` (February 2026). Its source counts, API inventory and effort estimates describe that snapshot. It explores a possible Rust implementation; the running extension remains C++, as described in [Architecture](ARCHITECTURE.md).
+
 This document analyzes whether DuckLake could be built in Rust instead of C++, what the challenges are, and what architecture would be required.
 
 ## Executive Summary
@@ -12,7 +14,7 @@ This document analyzes whether DuckLake could be built in Rust instead of C++, w
 
 ---
 
-## Current State
+## Inspected source snapshot
 
 ### DuckLake is 18,600 Lines of C++
 
@@ -26,7 +28,7 @@ This document analyzes whether DuckLake could be built in Rust instead of C++, w
 | `ducklake_catalog.cpp` | 797 | Catalog implementation |
 | Other files | ~8,390 | Delete, update, compaction, etc. |
 
-### What's Available in Rust Today
+### Rust bindings inspected
 
 The [duckdb-rs](https://github.com/duckdb/duckdb-rs) crate and [extension-template-rs](https://github.com/duckdb/extension-template-rs) provide:
 
