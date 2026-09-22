@@ -166,7 +166,7 @@ static string GeneratePostgresNativeFileColumnStatsCTEBody(const CTERequirement 
 	}
 	return StringUtil::Format("  SELECT %s\n"
 	                          "  FROM {METADATA_SCHEMA_ESCAPED}.ducklake_file_column_stats\n"
-	                          "  WHERE column_id = %d AND table_id = %d\n",
+	                          "  WHERE catalog_id = {CATALOG_ID} AND column_id = %d AND table_id = %d\n",
 	                          select_list, requirement.column_field_index, table_id.index);
 }
 
@@ -257,7 +257,7 @@ unique_ptr<QueryResult> PostgresMetadataManager::ExecuteQuery(DuckLakeSnapshot s
 	auto schema_identifier_escaped = StringUtil::Replace(schema_identifier, "'", "''");
 	auto schema_literal = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.MetadataSchemaName().GetIdentifierName());
 	auto metadata_path = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.MetadataPath());
-	auto data_path = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.DataPath());
+	auto base_data_path = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.BaseDataPath());
 
 	query = StringUtil::Replace(query, "{METADATA_CATALOG_NAME_LITERAL}", catalog_literal);
 	query = StringUtil::Replace(query, "{METADATA_CATALOG_NAME_IDENTIFIER}", catalog_identifier);
@@ -265,10 +265,16 @@ unique_ptr<QueryResult> PostgresMetadataManager::ExecuteQuery(DuckLakeSnapshot s
 	query = StringUtil::Replace(query, "{METADATA_CATALOG}", schema_identifier);
 	query = StringUtil::Replace(query, "{METADATA_SCHEMA_ESCAPED}", schema_identifier_escaped);
 	query = StringUtil::Replace(query, "{METADATA_PATH}", metadata_path);
-	query = StringUtil::Replace(query, "{DATA_PATH}", data_path);
+	query = StringUtil::Replace(query, "{BASE_DATA_PATH}", base_data_path);
+	query = StringUtil::Replace(query, "{DATA_PATH}", DuckLakeUtil::SQLLiteralToString(ducklake_catalog.DataPath()));
+	auto catalog_id = to_string(ducklake_catalog.CatalogId());
+	query = StringUtil::Replace(query, "{CATALOG_ID}", catalog_id);
+	auto catalog_name = DuckLakeUtil::SQLLiteralToString(ducklake_catalog.CatalogName());
+	query = StringUtil::Replace(query, "{CATALOG_NAME}", catalog_name);
 
-	auto result = connection.Query(
-	    StringUtil::Format("CALL %s(%s, %s, prepare=FALSE)", command, catalog_literal, SQLString(query)));
+	auto result =
+	    connection.Query(StringUtil::Format("CALL %s(%s, %s, prepare=%s)", command, catalog_literal, SQLString(query),
+	                                        command == "postgres_query" ? "TRUE" : "FALSE"));
 	return std::move(result);
 }
 unique_ptr<QueryResult> PostgresMetadataManager::Execute(DuckLakeSnapshot snapshot, string &query) {
@@ -287,13 +293,40 @@ void PostgresMetadataManager::ClearCache() {
 }
 
 string PostgresMetadataManager::GetLatestSnapshotQuery() const {
+	// Keep this MAX() form instead of ORDER BY ... DESC LIMIT 1 to mirror local metadata behavior
+	// and avoid regressions in concurrency-sensitive snapshot visibility paths.
 	return R"(
-	SELECT * FROM postgres_query({METADATA_CATALOG_NAME_LITERAL},
-		'SELECT snapshot_id, schema_version, next_catalog_id, next_file_id
-		 FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot WHERE snapshot_id = (
-		     SELECT MAX(snapshot_id) FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot
-		 );')
-	)";
+		SELECT * FROM postgres_query({METADATA_CATALOG_NAME_LITERAL},
+			'SELECT snapshot_id, schema_version, next_catalog_id, next_file_id
+			 FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot
+			 WHERE snapshot_id = (SELECT MAX(snapshot_id) FROM {METADATA_SCHEMA_ESCAPED}.ducklake_snapshot);')
+		)";
+}
+
+void PostgresMetadataManager::CreateDuckLakeSchema(DuckLakeEncryption encryption) {
+	throw IOException("Provision DuckLake metadata with Crucible before attaching.");
+}
+
+idx_t PostgresMetadataManager::GetNextSnapshotId() {
+	// The postgres_* wrappers receive the metadata catalog as a separate argument, so only schema
+	// qualification belongs inside the remote SQL string passed to nextval().
+	string query = "SELECT nextval('{METADATA_SCHEMA_ESCAPED}.ducklake_snapshot_id_seq')";
+	auto current_snapshot = transaction.GetSnapshot();
+	string guard_query =
+	    "UPDATE {METADATA_CATALOG}.ducklake_metadata SET value=value WHERE catalog_id IS NULL AND key='version'";
+	auto guard = Execute(current_snapshot, guard_query);
+	if (guard->HasError()) {
+		guard->GetErrorObject().Throw("Failed to acquire catalog commit guard: ");
+	}
+	auto result = ExecuteQuery(current_snapshot, query, "postgres_query");
+	if (result->HasError()) {
+		result->GetErrorObject().Throw("Failed to allocate next snapshot ID: ");
+	}
+	auto chunk = result->Fetch();
+	if (!chunk || chunk->size() == 0 || chunk->ColumnCount() != 1) {
+		throw IOException("Failed to allocate next snapshot ID: sequence query returned no rows");
+	}
+	return chunk->GetValue(0, 0).GetValue<idx_t>();
 }
 
 string PostgresMetadataManager::GenerateFileColumnStatsCTEBody(const CTERequirement &req, TableIndex table_id) {

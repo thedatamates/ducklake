@@ -123,7 +123,19 @@ public:
 		return options.metadata_path;
 	}
 	const string &DataPath() const {
+		return options.effective_data_path;
+	}
+	const string &BaseDataPath() const {
 		return options.data_path;
+	}
+	idx_t CatalogId() const {
+		return options.catalog_id;
+	}
+	void SetCatalogId(idx_t id) {
+		options.catalog_id = id;
+	}
+	const string &CatalogName() const {
+		return options.catalog_name;
 	}
 	const string &MetadataType() const {
 		return metadata_type;

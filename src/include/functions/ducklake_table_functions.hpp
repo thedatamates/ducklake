@@ -131,6 +131,11 @@ public:
 	static TableFunctionSet GetFunctions();
 };
 
+class DuckLakeCatalogsFunction : public DuckLakeBaseMetadataFunction {
+public:
+	DuckLakeCatalogsFunction();
+};
+
 class DuckLakeSettingsFunction : public DuckLakeBaseMetadataFunction {
 public:
 	DuckLakeSettingsFunction();

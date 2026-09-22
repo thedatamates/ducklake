@@ -137,7 +137,6 @@ void DuckLakeCleanupExecute(ClientContext &context, TableFunctionInput &data_p, 
 		return;
 	}
 	if (!state.executed && !data.dry_run) {
-		// delete the files
 		auto &fs = FileSystem::GetFileSystem(context);
 		vector<string> paths;
 		paths.reserve(data.files.size());

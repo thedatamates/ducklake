@@ -26,10 +26,14 @@ struct DuckLakeOptions {
 	string metadata_path;
 	Identifier metadata_schema;
 	string data_path;
+	string catalog_name;
+	idx_t catalog_id = 0;
+	bool has_catalog_id = false;
+	string effective_data_path;
 	bool override_data_path = false;
 	AccessMode access_mode = AccessMode::AUTOMATIC;
 	DuckLakeEncryption encryption = DuckLakeEncryption::AUTOMATIC;
-	bool create_if_not_exists = true;
+	bool create_if_not_exists = false;
 	bool automatic_migration = false;
 	bool hide_metadata_catalog = true;
 	unique_ptr<BoundAtClause> at_clause;

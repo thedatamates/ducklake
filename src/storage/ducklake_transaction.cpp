@@ -726,7 +726,7 @@ DuckLakeTransaction::DuckLakeTransaction(DuckLakeCatalog &ducklake_catalog, Tran
 	metadata_manager = DuckLakeMetadataManager::Create(*this);
 	schema_pins = make_uniq<DuckLakeSchemaPinState>();
 	state = make_uniq<DuckLakeTransactionState>(db, ducklake_catalog.IsCommitInfoRequired(), new_name_maps,
-	                                            ducklake_catalog.DataPath(), ducklake_catalog.Separator());
+	                                            ducklake_catalog.BaseDataPath(), ducklake_catalog.Separator());
 }
 
 DuckLakeTransaction::~DuckLakeTransaction() {
@@ -1459,6 +1459,9 @@ void DuckLakeTransaction::RunCommitLoop(DuckLakeSnapshot transaction_snapshot,
                                         const DuckLakeRetryConfig &retry_config) {
 	vector<unique_ptr<SQLStatement>> inlined_inserts;
 	DuckLakeCommitContext context;
+	context.allocate_snapshot = [&]() {
+		return metadata_manager->GetNextSnapshotId();
+	};
 	context.conflict_query_executor = [&](string q) -> unique_ptr<QueryResult> {
 		auto result = metadata_manager->Query(transaction_snapshot, q);
 		if (result->HasError()) {

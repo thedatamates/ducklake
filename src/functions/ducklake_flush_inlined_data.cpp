@@ -456,10 +456,10 @@ SELECT del.file_id, data.path, data.path_is_relative, del.row_id, del.begin_snap
        existing_del.begin_snapshot as del_begin_snapshot, existing_del.encryption_key as del_encryption_key,
        existing_del.format as del_format
 FROM {METADATA_CATALOG}.%s del
-JOIN {METADATA_CATALOG}.ducklake_data_file data ON del.file_id = data.data_file_id
+JOIN {METADATA_CATALOG}.ducklake_data_file data ON data.catalog_id = {CATALOG_ID} AND del.file_id = data.data_file_id
 LEFT JOIN (
     SELECT * FROM {METADATA_CATALOG}.ducklake_delete_file
-    WHERE table_id = %d AND {SNAPSHOT_ID} >= begin_snapshot
+    WHERE catalog_id = {CATALOG_ID} AND table_id = %d AND {SNAPSHOT_ID} >= begin_snapshot
           AND ({SNAPSHOT_ID} < end_snapshot OR end_snapshot IS NULL)
 ) existing_del ON del.file_id = existing_del.data_file_id
 	)",

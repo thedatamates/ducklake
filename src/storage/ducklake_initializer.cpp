@@ -90,7 +90,6 @@ void DuckLakeInitializer::Initialize() {
 	// explicitly load all secrets - work-around to secret initialization bug
 	transaction.Query("FROM duckdb_secrets()");
 
-	bool has_explicit_schema = !options.metadata_schema.empty();
 	if (options.metadata_schema.empty()) {
 		// if the schema is not explicitly set by the user - set it to the default schema in the catalog
 		options.metadata_schema = transaction.GetDefaultSchemaName();
@@ -108,21 +107,13 @@ void DuckLakeInitializer::Initialize() {
 		}
 	}
 
-	// after the metadata database is attached initialize the ducklake
-	// check if we are loading an existing DuckLake or creating a new one
-	// directly query a known ducklake metadata table to avoid scanning all attached catalogs via duckdb_tables()
-	// this prevents a corrupted ducklake catalog from blocking initialization of unrelated ducklake databases
-	// FIXME: verify that all ducklake tables are in the correct format
-	if (transaction.GetMetadataManager().MetadataExists()) {
-		LoadExistingDuckLake(transaction);
-	} else {
-		if (!options.create_if_not_exists) {
-			throw InvalidInputException("Existing DuckLake at metadata catalog \"%s\" does not exist - and creating a "
-			                            "new DuckLake is explicitly disabled",
-			                            options.metadata_path);
-		}
-		InitializeNewDuckLake(transaction, has_explicit_schema);
+	if (!options.has_catalog_id) {
+		throw InvalidInputException("CATALOG_ID is required. Provision catalogs with Crucible before attaching.");
 	}
+	if (!metadata_manager.MetadataExists()) {
+		throw InvalidInputException("DuckLake metadata must be provisioned by Crucible before attaching.");
+	}
+	LoadExistingDuckLake(transaction);
 	// note: re-fetch the metadata manager here - InitializeNewDuckLake/LoadExistingDuckLake may have
 	// swapped it out via SetVersionedMetadataManager, so the `metadata_manager` reference taken at the
 	// top of Initialize() would now dangle.
@@ -139,12 +130,10 @@ void DuckLakeInitializer::Initialize() {
 void DuckLakeInitializer::InitializeDataPath() {
 	auto &data_path = options.data_path;
 	if (data_path.empty()) {
+		options.effective_data_path = "";
 		return;
 	}
 
-	// This functions will:
-	//	1. Check if a known extension pattern matches the start of the data_path
-	//	2. If so, either load the required extension or throw a relevant error message
 	CheckAndAutoloadedRequiredExtension(data_path);
 
 	auto &fs = FileSystem::GetFileSystem(context);
@@ -156,32 +145,8 @@ void DuckLakeInitializer::InitializeDataPath() {
 	// ensure the paths we store always end in a path separator
 	data_path += separator;
 	catalog.Separator() = separator;
-}
 
-void DuckLakeInitializer::InitializeNewDuckLake(DuckLakeTransaction &transaction, bool has_explicit_schema) {
-	if (options.data_path.empty()) {
-		auto &metadata_catalog =
-		    Catalog::GetCatalog(*transaction.GetConnection().context, Identifier(options.metadata_database));
-		if (!metadata_catalog.IsDuckCatalog()) {
-			throw InvalidInputException(
-			    "Attempting to create a new ducklake instance but data_path is not set - set the "
-			    "DATA_PATH parameter to the desired location of the data files");
-		}
-		// for DuckDB instances - use a default data path
-		auto path = metadata_catalog.GetAttached().GetStorageManager().GetDBPath();
-		options.data_path = path + ".files";
-		InitializeDataPath();
-	}
-	// default to the latest version when creating a new DuckLake
-	auto version =
-	    options.ducklake_version == DuckLakeVersion::UNSET ? DUCKLAKE_LATEST_VERSION : options.ducklake_version;
-	SetVersionedMetadataManager(transaction, version);
-	auto &metadata_manager = transaction.GetMetadataManager();
-	metadata_manager.InitializeDuckLake(has_explicit_schema, catalog.Encryption());
-	if (catalog.Encryption() == DuckLakeEncryption::AUTOMATIC) {
-		// default to unencrypted
-		catalog.SetEncryption(DuckLakeEncryption::UNENCRYPTED);
-	}
+	options.effective_data_path = data_path + options.catalog_name + separator;
 }
 
 void DuckLakeInitializer::LoadExistingDuckLake(DuckLakeTransaction &transaction) {
@@ -191,68 +156,11 @@ void DuckLakeInitializer::LoadExistingDuckLake(DuckLakeTransaction &transaction)
 	DuckLakeVersion resolved_version = DuckLakeVersion::UNSET;
 	for (auto &tag : metadata.tags) {
 		if (tag.key == "version") {
-			auto catalog_version = DuckLakeVersionFromString(tag.value);
-			auto target_version = ResolveTargetVersion(catalog_version, tag.value);
-			if (catalog_version > target_version) {
-				// catalog is newer than the requested version, no FWC
-				throw InvalidInputException(
-				    "DuckLake catalog version is '%s', which is newer than the requested version '%s'. "
-				    "Cannot downgrade a DuckLake catalog.",
-				    tag.value, DuckLakeVersionToString(target_version));
+			if (tag.value != "1.1-dev1-catalog1") {
+				throw InvalidInputException("DuckLake requires Crucible metadata version 1.1-dev1-catalog1; found %s",
+				                            tag.value);
 			}
-			if (catalog_version < target_version && !options.automatic_migration) {
-				throw InvalidInputException(
-				    "DuckLake catalog version mismatch: catalog version is %s, but the extension requires version "
-				    "%s. To automatically migrate, set AUTOMATIC_MIGRATION to TRUE when attaching.",
-				    tag.value, DuckLakeVersionToString(target_version));
-			}
-			if (catalog_version == DuckLakeVersion::V0_1) {
-				metadata_manager.MigrateV01();
-				catalog_version = DuckLakeVersion::V0_2;
-			}
-			if (catalog_version == DuckLakeVersion::V0_2) {
-				metadata_manager.MigrateV02();
-				catalog_version = DuckLakeVersion::V0_3;
-			}
-			if (catalog_version == DuckLakeVersion::V0_3_DEV1) {
-				metadata_manager.MigrateV02(true);
-				catalog_version = DuckLakeVersion::V0_3;
-			}
-			if (catalog_version == DuckLakeVersion::V0_3) {
-				metadata_manager.MigrateV03();
-				catalog_version = DuckLakeVersion::V0_4;
-			}
-			if (catalog_version == DuckLakeVersion::V0_4_DEV1) {
-				metadata_manager.MigrateV03(true);
-				catalog_version = DuckLakeVersion::V0_4;
-			}
-			if (catalog_version == DuckLakeVersion::V0_4) {
-				metadata_manager.MigrateV04();
-				catalog_version = DuckLakeVersion::V1_0;
-			}
-			if (catalog_version == DuckLakeVersion::V1_1_DEV_1) {
-				// dev schemas evolve in place, re-run the v1.1 migration so older dev catalogs get every addition
-				if (options.automatic_migration) {
-					// an explicitly requested migration fails loudly
-					metadata_manager.MigrateV10(true);
-				} else if (options.access_mode != AccessMode::READ_ONLY) {
-					// a plain attach is best-effort and never fails the attach
-					metadata_manager.MigrateV10Dev();
-				}
-			}
-			if (catalog_version >= target_version) {
-				resolved_version = catalog_version;
-				continue;
-			}
-			if (catalog_version == DuckLakeVersion::V1_0) {
-				metadata_manager.MigrateV10();
-				catalog_version = DuckLakeVersion::V1_1_DEV_1;
-			}
-			if (catalog_version != DUCKLAKE_LATEST_VERSION) {
-				throw NotImplementedException("Unsupported DuckLake version '%s'",
-				                              DuckLakeVersionToString(catalog_version));
-			}
-			resolved_version = catalog_version;
+			resolved_version = DuckLakeVersion::V1_1_DEV_1;
 		}
 		if (tag.key == "data_path") {
 			if (options.data_path.empty()) {
@@ -285,6 +193,24 @@ void DuckLakeInitializer::LoadExistingDuckLake(DuckLakeTransaction &transaction)
 	for (auto &entry : metadata.table_settings) {
 		options.table_options[entry.table_id][entry.tag.key] = entry.tag.value;
 	}
+	if (resolved_version == DuckLakeVersion::UNSET) {
+		throw InvalidInputException("DuckLake metadata version is missing; provision metadata with Crucible.");
+	}
+	auto catalog_result = transaction.Query("SELECT catalog_name FROM {METADATA_CATALOG}.ducklake_catalog "
+	                                        "WHERE catalog_id = {CATALOG_ID} AND end_snapshot IS NULL");
+	if (catalog_result->HasError()) {
+		catalog_result->GetErrorObject().Throw("Failed to resolve CATALOG_ID: ");
+	}
+	auto chunk = catalog_result->Fetch();
+	if (!chunk || chunk->size() != 1 || chunk->GetValue(0, 0).IsNull()) {
+		throw InvalidInputException("CATALOG_ID does not identify an active catalog");
+	}
+	auto catalog_name = chunk->GetValue(0, 0).GetValue<string>();
+	if (!options.catalog_name.empty() && options.catalog_name != catalog_name) {
+		throw InvalidInputException("CATALOG does not match CATALOG_ID");
+	}
+	options.catalog_name = catalog_name;
+	InitializeDataPath();
 	// set correct version metadata manager
 	if (resolved_version != DuckLakeVersion::UNSET) {
 		SetVersionedMetadataManager(transaction, resolved_version);

@@ -35,6 +35,8 @@ public:
 	unique_ptr<QueryResult> Query(DuckLakeSnapshot snapshot, string &query) override;
 
 	void ClearCache() override;
+	void CreateDuckLakeSchema(DuckLakeEncryption encryption) override;
+	idx_t GetNextSnapshotId() override;
 
 protected:
 	string GetLatestSnapshotQuery() const override;

@@ -1,8 +1,12 @@
-### Install duckdb CLI, using brew
+### Build the fork's DuckDB runtime
+
+Follow the [build instructions](../../docs/BUILD.md). Use the pinned runtime and extensions together:
+
 ```bash
-brew install duckdb
+./build/release/duckdb --version
 ```
-These instructions have been tested with DuckDB v1.3.0.
+
+Provision `minio-ducklake-demo.ducklake` with the managed metadata baseline and an active catalog before attaching. The numeric ID below is an example. This MinIO walkthrough has not been rerun against the integrated fork; the validated local and PostgreSQL regressions are described in the build instructions.
 
 
 ### Install required third-party tools, using brew
@@ -19,9 +23,6 @@ Minio is a local implementation of the S3 protocol, that allow both to mock othe
 ### Checking current versions / permissions of tools
 
 ```bash
-$ duckdb --version
-v1.3.0 71c5c07cdd
-
 $ minio -version       
 minio version RELEASE.2025-04-22T22-12-26Z (commit-id=0d7408fc9969caf07de6a8c3a84f9fbb10a6739e)
 Runtime: go1.24.2 darwin/arm64
@@ -61,16 +62,19 @@ Endpoint and passwords have to be taken from previous step
 ### DuckDB
 Start DuckDb
 ```bash
-duckdb
+./build/release/duckdb -unsigned
 ```
 
 Enter the following SQL statements:
 ```sql
+LOAD 'build/release/extension/ducklake/ducklake.duckdb_extension';
+
 --- Setup relevant DuckDB temporary secret to gain access to the local MinIO S3 bucket
 create secret (type s3, key_id 'minioadmin', secret 'minioadmin', endpoint '10.1.0.202:9000', use_ssl false, url_style 'path');
 
 --- Attach a local DuckDB file (minio-ducklake-demo.ducklake) and a local (but using S3 protocol) bucket
-ATTACH 'ducklake:minio-ducklake-demo.ducklake' as db (DATA_PATH 's3://demo-ducklake-minio-bucket');
+ATTACH 'ducklake:minio-ducklake-demo.ducklake' as db
+    (DATA_PATH 's3://demo-ducklake-minio-bucket', CATALOG_ID 42);
 
 --- Use the just attached DuckLake as default Database
 USE db;

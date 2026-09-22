@@ -104,6 +104,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 	DuckLakeLastCommittedSnapshotFunction last_committed;
 	loader.RegisterFunction(last_committed);
 
+	DuckLakeCatalogsFunction catalogs;
+	loader.RegisterFunction(catalogs);
+
 	DuckLakeSettingsFunction settings;
 	loader.RegisterFunction(settings);
 

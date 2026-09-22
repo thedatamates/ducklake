@@ -858,9 +858,10 @@ bool DuckLakeTransactionState::TryMergeInlinedStats(const vector<DuckLakeColumnS
 //! which TryMergeInlinedStats only produces for scalar roots.
 static set<FieldIndex> ReadSkippedStatsFields(TableIndex table_id, const DuckLakeCommitContext &context) {
 	set<FieldIndex> result;
-	auto query = StringUtil::Format("SELECT value FROM {METADATA_CATALOG}.ducklake_metadata "
-	                                "WHERE key='skip_stats_columns' AND scope='table' AND scope_id=%d;",
-	                                table_id.index);
+	auto query = StringUtil::Format(
+	    "SELECT value FROM {METADATA_CATALOG}.ducklake_metadata "
+	    "WHERE catalog_id = {CATALOG_ID} AND key='skip_stats_columns' AND scope='table' AND scope_id=%d;",
+	    table_id.index);
 	auto stats_option = context.query_metadata(query);
 	if (stats_option->HasError()) {
 		stats_option->GetErrorObject().Throw("Failed to read the skip_stats_columns option from DuckLake: ");
@@ -1041,8 +1042,9 @@ static idx_t SubtractDroppedFileStat(idx_t value, idx_t decrement) {
 }
 
 static string DeleteTableColumnStatsSql(TableIndex table_id) {
-	return StringUtil::Format("DELETE FROM {METADATA_CATALOG}.ducklake_table_column_stats WHERE table_id=%d;",
-	                          table_id.index);
+	return StringUtil::Format(
+	    "DELETE FROM {METADATA_CATALOG}.ducklake_table_column_stats WHERE catalog_id = {CATALOG_ID} AND table_id=%d;",
+	    table_id.index);
 }
 
 bool DuckLakeTransactionState::ApplyDroppedFileStats(
@@ -1883,11 +1885,11 @@ SnapshotDeletedFromFiles DuckLakeTransactionState::GetFilesDeletedOrDroppedAfter
 	string sql = R"(
 	SELECT data_file_id
 	FROM {METADATA_CATALOG}.ducklake_delete_file
-	WHERE begin_snapshot > {SNAPSHOT_ID}
+	WHERE catalog_id = {CATALOG_ID} AND begin_snapshot > {SNAPSHOT_ID}
 	UNION ALL
 	SELECT data_file_id
 	FROM {METADATA_CATALOG}.ducklake_data_file
-	WHERE end_snapshot IS NOT NULL AND end_snapshot > {SNAPSHOT_ID}
+	WHERE catalog_id = {CATALOG_ID} AND end_snapshot IS NOT NULL AND end_snapshot > {SNAPSHOT_ID}
 	)";
 	auto result = executor(sql);
 	if (result->HasError()) {
@@ -1907,10 +1909,10 @@ void DuckLakeTransactionState::DropEmptySupersededInlinedTables(const DuckLakeCo
 	string find_targets_sql = R"(
 SELECT idt.table_id, idt.schema_version, idt.table_name
 FROM {METADATA_CATALOG}.ducklake_inlined_data_tables idt
-WHERE idt.schema_version < (
+WHERE idt.catalog_id = {CATALOG_ID} AND idt.schema_version < (
     SELECT MAX(idt2.schema_version)
     FROM {METADATA_CATALOG}.ducklake_inlined_data_tables idt2
-    WHERE idt2.table_id = idt.table_id
+    WHERE idt2.catalog_id = idt.catalog_id AND idt2.table_id = idt.table_id
 );)";
 	auto targets = context.query_metadata(find_targets_sql);
 	if (targets->HasError()) {
@@ -1941,10 +1943,11 @@ WHERE idt.schema_version < (
 		if (row_count != 0) {
 			continue;
 		}
-		drops_sql += StringUtil::Format(
-		    "DELETE FROM {METADATA_CATALOG}.ducklake_inlined_data_tables WHERE table_id=%d AND schema_version=%d;"
-		    "DROP TABLE IF EXISTS {METADATA_CATALOG}.%s;",
-		    candidate.table_id, candidate.schema_version, SQLIdentifier(candidate.table_name));
+		drops_sql +=
+		    StringUtil::Format("DELETE FROM {METADATA_CATALOG}.ducklake_inlined_data_tables WHERE catalog_id = "
+		                       "{CATALOG_ID} AND table_id=%d AND schema_version=%d;"
+		                       "DROP TABLE IF EXISTS {METADATA_CATALOG}.%s;",
+		                       candidate.table_id, candidate.schema_version, SQLIdentifier(candidate.table_name));
 	}
 	if (drops_sql.empty()) {
 		return;
@@ -2004,7 +2007,8 @@ void DuckLakeTransactionState::Commit(DuckLakeSnapshot transaction_snapshot,
 			} else {
 				commit_stats_snapshot.snapshot = context.get_snapshot();
 			}
-			commit_snapshot.snapshot_id++;
+			can_retry = true;
+			commit_snapshot.snapshot_id = context.allocate_snapshot();
 			if (SchemaChangesMade()) {
 				// we changed the schema - need to get a new schema version
 				commit_snapshot.schema_version++;
@@ -2015,6 +2019,12 @@ void DuckLakeTransactionState::Commit(DuckLakeSnapshot transaction_snapshot,
 			string batch_queries = DuckLakeMetadataManager::InsertSnapshotSql();
 			batch_queries += CommitChanges(commit_state, attempt_changes, stats, context, attempt_dropped_file_stats);
 			batch_queries += WriteSnapshotChanges(commit_state, attempt_changes, context.commit_info);
+			batch_queries += "INSERT INTO {METADATA_CATALOG}.ducklake_snapshot_lineage "
+			                 "(catalog_id, previous_snapshot_id, snapshot_id) SELECT {CATALOG_ID}, "
+			                 "COALESCE((SELECT MAX(snapshot_id) FROM {METADATA_CATALOG}.ducklake_snapshot_changes "
+			                 "WHERE catalog_id = {CATALOG_ID} AND snapshot_id < {SNAPSHOT_ID}), "
+			                 "(SELECT MIN(begin_snapshot) FROM {METADATA_CATALOG}.ducklake_catalog "
+			                 "WHERE catalog_id = {CATALOG_ID})), {SNAPSHOT_ID};";
 			auto res = context.execute_commit_batch(commit_snapshot, batch_queries);
 			if (res->HasError()) {
 				auto &commit_error = res->GetErrorObject();

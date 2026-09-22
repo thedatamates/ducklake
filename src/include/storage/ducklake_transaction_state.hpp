@@ -24,6 +24,7 @@ struct DuckLakeColumnSchemaEntry {
 };
 
 struct DuckLakeCommitContext {
+	std::function<idx_t()> allocate_snapshot;
 	//! Runs a metadata-DB query during conflict resolution.
 	std::function<unique_ptr<QueryResult>(string)> conflict_query_executor;
 	//! Returns the latest snapshot for the first commit attempt.
