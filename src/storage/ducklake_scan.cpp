@@ -277,7 +277,8 @@ bool DuckLakeFunctionInfo::CanUseGlobalStats() {
 		return false;
 	}
 	auto active_transaction = GetTransaction();
-	return snapshot.snapshot_id == active_transaction->GetSnapshot().snapshot_id &&
+	return snapshot.source_catalog_id == DConstants::INVALID_INDEX &&
+	       snapshot.snapshot_id == active_transaction->GetSnapshot().snapshot_id &&
 	       !active_transaction->GetCatalog().CatalogSnapshot();
 }
 

@@ -48,11 +48,13 @@ CREATE TABLE ducklake_table_stats(catalog_id BIGINT NOT NULL, table_id BIGINT, r
 CREATE TABLE ducklake_tag(catalog_id BIGINT NOT NULL, object_id BIGINT, begin_snapshot BIGINT, end_snapshot BIGINT, "key" VARCHAR, "value" VARCHAR, PRIMARY KEY ("catalog_id", "object_id", "key", "begin_snapshot"));
 CREATE TABLE ducklake_view(catalog_id BIGINT NOT NULL, view_id BIGINT, view_uuid UUID, begin_snapshot BIGINT, end_snapshot BIGINT, schema_id BIGINT, view_name VARCHAR, dialect VARCHAR, "sql" VARCHAR, column_aliases VARCHAR, PRIMARY KEY ("catalog_id", "view_id", "begin_snapshot"));
 CREATE TABLE ducklake_view_column_tag(catalog_id BIGINT NOT NULL, view_id BIGINT, column_name VARCHAR, begin_snapshot BIGINT, end_snapshot BIGINT, "key" VARCHAR, "value" VARCHAR, PRIMARY KEY ("catalog_id", "view_id", "column_name", "key", "begin_snapshot"));
+CREATE TABLE ducklake_file (catalog_id BIGINT NOT NULL, file_id BIGINT NOT NULL, file_uuid UUID NOT NULL, begin_snapshot BIGINT NOT NULL, end_snapshot BIGINT, schema_id BIGINT NOT NULL, file_name VARCHAR NOT NULL, path VARCHAR NOT NULL, path_is_relative BOOLEAN NOT NULL, file_size_bytes BIGINT NOT NULL, mime_type VARCHAR NOT NULL, content_hash VARCHAR NOT NULL, PRIMARY KEY(catalog_id, file_id, begin_snapshot));
 CREATE TABLE ducklake_catalog (
     catalog_id BIGINT NOT NULL,
     catalog_uuid UUID NOT NULL,
     catalog_name VARCHAR NOT NULL,
     parent_catalog_id BIGINT,
+    parent_snapshot_id BIGINT,
     begin_snapshot BIGINT NOT NULL,
     end_snapshot BIGINT,
     PRIMARY KEY (catalog_id, begin_snapshot)
@@ -64,10 +66,10 @@ CREATE TABLE ducklake_snapshot_lineage (
     PRIMARY KEY (catalog_id, previous_snapshot_id)
 );
 CREATE SEQUENCE ducklake_snapshot_id_seq START 1;
-INSERT INTO ducklake_metadata (key, value) VALUES ('version', '1.1-dev1-catalog1'), ('encrypted', 'false');
+INSERT INTO ducklake_metadata (key, value) VALUES ('version', '1.1-dev1-catalog2'), ('encrypted', 'false');
 INSERT INTO ducklake_metadata (catalog_id, key, value) VALUES (0, 'data_path', rtrim('{DATA_PATH}/ducklake ''quoted'' "path"', '/') || '/');
 INSERT INTO ducklake_snapshot VALUES (0, now(), 0, 1, 0);
-INSERT INTO ducklake_catalog VALUES (0, '00000000-0000-0000-0000-000000000001', 'test', NULL, 0, NULL);
+INSERT INTO ducklake_catalog (catalog_id, catalog_uuid, catalog_name, parent_catalog_id, begin_snapshot, end_snapshot) VALUES (0, '00000000-0000-0000-0000-000000000001', 'test', NULL, 0, NULL);
 INSERT INTO ducklake_schema VALUES (0, 0, '00000000-0000-0000-0000-000000000002', 0, NULL, 'main', 'main/', true);
 INSERT INTO ducklake_snapshot_changes (catalog_id, snapshot_id, changes_made) VALUES (0, 0, 'created_schema:"main"');
 COMMIT;

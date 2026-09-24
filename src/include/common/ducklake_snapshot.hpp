@@ -30,6 +30,8 @@ struct DuckLakeSnapshot {
 	idx_t schema_version;
 	idx_t next_catalog_id;
 	idx_t next_file_id;
+	//! Historical reads through a fork can resolve to a frozen ancestor's metadata.
+	idx_t source_catalog_id = DConstants::INVALID_INDEX;
 
 	void Serialize(Serializer &serializer) const;
 	static DuckLakeSnapshot Deserialize(Deserializer &deserializer);

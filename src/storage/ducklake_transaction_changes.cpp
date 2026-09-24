@@ -6,6 +6,9 @@ namespace duckdb {
 namespace {
 
 enum class ChangeType {
+	CREATED_FILE,
+	ALTERED_FILE,
+	DROPPED_FILE,
 	FORKED_FROM,
 	CREATED_TABLE,
 	CREATED_VIEW,
@@ -42,7 +45,13 @@ ChangeType ParseChangeType(const string &changes_made, idx_t &pos) {
 		}
 	}
 	auto change_type_str = changes_made.substr(start_pos, pos - start_pos);
-	if (StringUtil::CIEquals(change_type_str, "forked_from")) {
+	if (StringUtil::CIEquals(change_type_str, "created_file")) {
+		return ChangeType::CREATED_FILE;
+	} else if (StringUtil::CIEquals(change_type_str, "altered_file")) {
+		return ChangeType::ALTERED_FILE;
+	} else if (StringUtil::CIEquals(change_type_str, "dropped_file")) {
+		return ChangeType::DROPPED_FILE;
+	} else if (StringUtil::CIEquals(change_type_str, "forked_from")) {
 		return ChangeType::FORKED_FROM;
 	} else if (StringUtil::CIEquals(change_type_str, "created_table")) {
 		return ChangeType::CREATED_TABLE;
@@ -141,6 +150,17 @@ SnapshotChangeInformation SnapshotChangeInformation::ParseChangesMade(const stri
 	SnapshotChangeInformation result;
 	for (auto &entry : change_list) {
 		switch (entry.change_type) {
+		case ChangeType::CREATED_FILE: {
+			auto value = DuckLakeUtil::ParseCatalogEntry(entry.change_value);
+			result.created_files[value.schema].insert(std::move(value.name));
+			break;
+		}
+		case ChangeType::ALTERED_FILE:
+			result.altered_files.insert(StringUtil::ToUnsigned(entry.change_value));
+			break;
+		case ChangeType::DROPPED_FILE:
+			result.dropped_files.insert(StringUtil::ToUnsigned(entry.change_value));
+			break;
 		case ChangeType::CREATED_TABLE: {
 			auto catalog_value = DuckLakeUtil::ParseCatalogEntry(entry.change_value);
 			result.created_tables[catalog_value.schema].insert(make_pair(std::move(catalog_value.name), "table"));

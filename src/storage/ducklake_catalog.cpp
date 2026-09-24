@@ -365,6 +365,9 @@ shared_ptr<DuckLakeSchemaCacheEntry> DuckLakeCatalog::GetSchemaCacheEntry(DuckLa
                                                                           DuckLakeSnapshot snapshot) {
 	auto &cache = GetObjectCacheInstance();
 	auto key = SchemaCacheKey(snapshot.schema_version);
+	if (snapshot.source_catalog_id != DConstants::INVALID_INDEX) {
+		key += ":ancestor:" + to_string(snapshot.source_catalog_id);
+	}
 	auto cached = cache.Get<DuckLakeSchemaCacheEntry>(key);
 	if (cached) {
 		return cached;
@@ -815,6 +818,9 @@ shared_ptr<DuckLakeTableStats> DuckLakeCatalog::GetTableStats(DuckLakeTransactio
                                                               DuckLakeSnapshot snapshot, TableIndex table_id) {
 	auto &cache = GetObjectCacheInstance();
 	auto key = StatsCacheKey(snapshot.next_file_id, table_id);
+	if (snapshot.source_catalog_id != DConstants::INVALID_INDEX) {
+		key += ":ancestor:" + to_string(snapshot.source_catalog_id);
+	}
 	auto cached = cache.Get<DuckLakeTableStatsCacheEntry>(key);
 	if (cached && cached->schema_version == snapshot.schema_version) {
 		if (!cached->has_stats) {

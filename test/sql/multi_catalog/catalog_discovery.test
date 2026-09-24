@@ -14,7 +14,7 @@ endloop
 
 statement ok
 ATTACH '{TEST_DIR}/metadata.db' AS inspect;
-INSERT INTO inspect.ducklake_catalog VALUES
+INSERT INTO inspect.ducklake_catalog (catalog_id, catalog_uuid, catalog_name, parent_catalog_id, begin_snapshot, end_snapshot) VALUES
   (2, '00000000-0000-0000-0000-000000000003', 'fork', 0, 0, NULL),
   (3, '00000000-0000-0000-0000-000000000004', 'retired', 0, 0, 0);
 DETACH inspect;

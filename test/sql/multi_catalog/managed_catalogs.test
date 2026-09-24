@@ -40,11 +40,13 @@ CREATE TABLE ducklake_table_stats(catalog_id BIGINT NOT NULL, table_id BIGINT, r
 CREATE TABLE ducklake_tag(catalog_id BIGINT NOT NULL, object_id BIGINT, begin_snapshot BIGINT, end_snapshot BIGINT, "key" VARCHAR, "value" VARCHAR, PRIMARY KEY ("catalog_id", "object_id", "key", "begin_snapshot"));
 CREATE TABLE ducklake_view(catalog_id BIGINT NOT NULL, view_id BIGINT, view_uuid UUID, begin_snapshot BIGINT, end_snapshot BIGINT, schema_id BIGINT, view_name VARCHAR, dialect VARCHAR, "sql" VARCHAR, column_aliases VARCHAR, PRIMARY KEY ("catalog_id", "view_id", "begin_snapshot"));
 CREATE TABLE ducklake_view_column_tag(catalog_id BIGINT NOT NULL, view_id BIGINT, column_name VARCHAR, begin_snapshot BIGINT, end_snapshot BIGINT, "key" VARCHAR, "value" VARCHAR, PRIMARY KEY ("catalog_id", "view_id", "column_name", "key", "begin_snapshot"));
+CREATE TABLE ducklake_file (catalog_id BIGINT NOT NULL, file_id BIGINT NOT NULL, file_uuid UUID NOT NULL, begin_snapshot BIGINT NOT NULL, end_snapshot BIGINT, schema_id BIGINT NOT NULL, file_name VARCHAR NOT NULL, path VARCHAR NOT NULL, path_is_relative BOOLEAN NOT NULL, file_size_bytes BIGINT NOT NULL, mime_type VARCHAR NOT NULL, content_hash VARCHAR NOT NULL, PRIMARY KEY(catalog_id, file_id, begin_snapshot));
 CREATE TABLE ducklake_catalog (
     catalog_id BIGINT NOT NULL,
     catalog_uuid UUID NOT NULL,
     catalog_name VARCHAR NOT NULL,
     parent_catalog_id BIGINT,
+    parent_snapshot_id BIGINT,
     begin_snapshot BIGINT NOT NULL,
     end_snapshot BIGINT,
     PRIMARY KEY (catalog_id, begin_snapshot)
@@ -57,11 +59,11 @@ CREATE TABLE ducklake_snapshot_lineage (
 );
 CREATE SEQUENCE ducklake_snapshot_id_seq START 1;
 INSERT INTO ducklake_metadata (key, value) VALUES
-    ('version', '1.1-dev1-catalog1'),
+    ('version', '1.1-dev1-catalog2'),
     ('encrypted', 'false');
 INSERT INTO ducklake_snapshot (snapshot_id, schema_version, next_catalog_id, next_file_id)
 VALUES (0, 0, 1, 1);
-INSERT INTO ducklake_catalog VALUES (1, uuid(), 'one', NULL, 0, NULL), (2, uuid(), 'two', NULL, 0, NULL);
+INSERT INTO ducklake_catalog (catalog_id, catalog_uuid, catalog_name, parent_catalog_id, begin_snapshot, end_snapshot) VALUES (1, uuid(), 'one', NULL, 0, NULL), (2, uuid(), 'two', NULL, 0, NULL);
 INSERT INTO ducklake_schema VALUES (1, 3, uuid(), 0, NULL, 'main', 'one/main/', true), (2, 3, uuid(), 0, NULL, 'main', 'two/main/', true);
 UPDATE ducklake_snapshot SET next_catalog_id=5;
 USE memory;

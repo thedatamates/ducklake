@@ -46,6 +46,9 @@ struct TransactionChangeInformation {
 };
 
 struct SnapshotChangeInformation {
+	map<string, set<string>> created_files;
+	set<idx_t> altered_files;
+	set<idx_t> dropped_files;
 	optional_idx forked_from;
 	case_insensitive_set_t created_schemas;
 	set<SchemaIndex> dropped_schemas;

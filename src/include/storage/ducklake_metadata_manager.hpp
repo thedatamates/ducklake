@@ -319,8 +319,9 @@ public:
 	                                                                  double deletion_threshold,
 	                                                                  DuckLakeSnapshot snapshot,
 	                                                                  DuckLakeFileSizeOptions options);
-	virtual idx_t GetBeginSnapshotForTable(TableIndex table_id);
-	virtual idx_t GetBeginSnapshotForSchemaVersion(TableIndex table_id, idx_t schema_version);
+	virtual idx_t GetBeginSnapshotForTable(TableIndex table_id, idx_t source_catalog_id = DConstants::INVALID_INDEX);
+	virtual idx_t GetBeginSnapshotForSchemaVersion(TableIndex table_id, idx_t schema_version,
+	                                               idx_t source_catalog_id = DConstants::INVALID_INDEX);
 	virtual idx_t GetNetDataFileRowCount(TableIndex table_id, DuckLakeSnapshot snapshot);
 	virtual idx_t GetNetInlinedRowCount(const string &inlined_table_name, DuckLakeSnapshot snapshot);
 	//! SQL builders for stats-refresh metadata lookups; caller substitutes placeholders + executes.
@@ -442,6 +443,7 @@ public:
 	static SnapshotChangeInfo ParseSnapshotAndStatsAndChanges(QueryResult &result, SnapshotAndStats &current_snapshot);
 	virtual unique_ptr<DuckLakeSnapshot> GetSnapshot();
 	virtual unique_ptr<DuckLakeSnapshot> GetSnapshot(BoundAtClause &at_clause, SnapshotBound bound);
+	DuckLakeSnapshot ResolveSnapshot(DuckLakeSnapshot snapshot);
 
 	virtual idx_t GetNextColumnId(TableIndex table_id);
 	virtual unique_ptr<QueryResult> ReadInlinedData(DuckLakeSnapshot snapshot, const string &inlined_table_name,

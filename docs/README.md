@@ -6,7 +6,7 @@ DuckLake stores table metadata in SQL and data in Parquet. [Upstream documentati
 
 ## Provisioning and attachment
 
-Crucible provisions the fresh metadata baseline through `crucible mb migrate`. Its authoritative schema is `macro/services/crucible/src/migration/metabase/schema.sql` in Monogram. The format marker is `1.1-dev1-catalog1`. This baseline does not upgrade old development data.
+Crucible provisions and migrates metadata through `crucible mb migrate`. Its authoritative migrations live in `macro/services/crucible/src/migration/metabase/` in Monogram. The format marker is `1.1-dev1-catalog2`; the file migration upgrades catalog1 metadata. Drain existing connections before migration, then reopen with the matching extension.
 
 Create catalogs through Crucible, then attach their numeric IDs:
 
@@ -24,9 +24,11 @@ Supported metadata backends are PostgreSQL and DuckDB. DuckDB cannot attach the 
 
 Metadata queries and joins include catalog identity. Snapshot IDs come from a shared sequence; the extension and Crucible use a common transactional guard for shared object/file counters. Sequence gaps after rollback are valid.
 
-Crucible performs current-state catalog forks. Parquet files remain shared references, while physical inline-data and inline-deletion tables are copied independently. Older schema definitions are retained when current inline data still uses those layouts. User-visible time travel cannot precede catalog creation; ancestor data-history inheritance is not implemented by this port.
+Crucible performs head and selected-snapshot catalog forks. Parquet files remain shared references, while physical inline-data and inline-deletion tables are copied independently at the selected state. Older schema definitions are retained when inline data still uses those layouts. Pre-birth table/view reads resolve through the parent's recorded snapshot cutoff, recursively for successive forks. Snapshot listings include that bounded ancestor history. Change-range scans across catalog-fork boundaries are rejected; exact historical snapshots remain readable.
 
-File cleanup retains files referenced by any catalog, including historical references. Orphan detection includes all catalogs sharing the storage root. Snapshot expiration is rejected because upstream's expiration implementation assumes exclusive ownership of the global snapshot history.
+Native files have catalog/schema-scoped keys and snapshot-versioned metadata in `ducklake_file`, separate from table Parquet records in `ducklake_data_file`. Crucible owns their publication and byte access. File changes participate in snapshot change parsing; engine schema drops with live native files are rejected, including CASCADE. Native files do not appear in `information_schema.tables`.
+
+File cleanup retains files referenced by any catalog, including historical native-file references. Both cleanup paths protect the reserved `_files/` storage area, including staged bytes. Orphan detection includes all catalogs sharing the storage root. Snapshot expiration is rejected because upstream's expiration implementation assumes exclusive ownership of the global snapshot history.
 
 ## Building
 

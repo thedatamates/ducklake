@@ -1,5 +1,6 @@
 #include "storage/ducklake_multi_file_list.hpp"
 #include "storage/ducklake_multi_file_reader.hpp"
+#include "storage/ducklake_metadata_manager.hpp"
 #include "storage/ducklake_table_entry.hpp"
 #include "storage/ducklake_catalog.hpp"
 #include "storage/ducklake_delete_filter.hpp"
@@ -439,9 +440,11 @@ shared_ptr<BaseFileReader> DuckLakeMultiFileReader::TryCreateInlinedDataReader(c
 		// read the table at the specified version
 		auto transaction = read_info.GetTransaction();
 		auto &catalog = transaction->GetCatalog();
-		DuckLakeSnapshot snapshot(catalog.GetBeginSnapshotForSchemaVersion(read_info.table.GetTableId(),
-		                                                                   schema_version.GetIndex(), *transaction),
-		                          schema_version.GetIndex(), 0, 0);
+		DuckLakeSnapshot snapshot(
+		    transaction->GetMetadataManager().GetBeginSnapshotForSchemaVersion(
+		        read_info.table.GetTableId(), schema_version.GetIndex(), read_info.snapshot.source_catalog_id),
+		    schema_version.GetIndex(), 0, 0);
+		snapshot.source_catalog_id = read_info.snapshot.source_catalog_id;
 		auto entry = catalog.GetEntryById(*transaction, snapshot, read_info.table.GetTableId());
 		if (!entry) {
 			return nullptr;

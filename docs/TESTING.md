@@ -22,7 +22,7 @@ build/release/test/unittest --test-dir . \
   --test-config test/configs/managed.json 'test/sql/multi_catalog/*'
 ```
 
-Without this environment variable, the four PostgreSQL cases report a prerequisite skip. The native `managed_catalogs`, `catalog_discovery` and `retention_guards` cases still run. The `Catalogs` CI job builds PostgreSQL support, creates its own database and sets the variable explicitly.
+Without this environment variable, the four PostgreSQL cases report a prerequisite skip. The native `managed_catalogs`, `catalog_discovery`, `retention_guards` and `native_files` cases still run. The `Catalogs` CI job builds PostgreSQL support, creates its own database and sets the variable explicitly.
 
 Other existing configurations retain their own prerequisites and exclusions and inherit the managed lifecycle exclusions:
 
@@ -49,10 +49,11 @@ Use exact test paths or a trailing `*` when selecting cases. This Catch runner d
 | Quoted metadata identifiers | `catalog/quoted_identifiers.test`: apostrophes, quotes and spaces in metadata paths, metadata aliases/schemas and SQL identifiers, including a committing write |
 | Forked immutable storage | `multi_catalog/fork_storage.test`: shared file/table IDs and paths, inherited deletion files, views/macros, partition/sort metadata, independent writes/schema changes, reconnect and fork history |
 | Forked inline storage | `multi_catalog/fork_inline_layouts.test`: independently copied physical inline data/deletion tables, pre-rename/pre-add column layouts, independent mutations, flush and reconnect |
-| Catalog birth bounds | Both fork tests reject pre-birth reads; inline test reads the fork's birth version after later writes and flush |
+| Catalog ancestry | Both fork tests read inherited pre-birth snapshots; inline test also reads the fork's birth version after later writes and flush. Change scans crossing a fork boundary reject the request. |
 | Retention and cleanup | `multi_catalog/fork_storage.test`: another catalog's current and historical references protect Parquet and deletion files; a re-imported path remains protected under a different file ID; orphan removal preserves referenced files; metadata errors fail closed; physical files disappear only after all references are retired |
 | Expiration rejection | `multi_catalog/retention_guards.test`: failed expiration leaves snapshot/data/delete metadata unchanged; compaction, checkpoint, drop and cleanup preserve historical reads |
 | Views with inlining validation | `settings/inlining_with_views.test`: global and schema inlining changes with committed and transaction-local views do not cast views to tables |
+| Native files | `multi_catalog/native_files.test`: native files are not SQL tables; live files block schema drops; archived file references and staged `_files/` bytes survive both cleanup paths; unrelated orphans remain eligible; catalog1 attachments are rejected |
 
 Paths in the table are relative to `test/sql/`. These tests establish the extension's behavior against a valid provisioned fork; they do not claim to test Crucible's implementation of the provisioning transaction.
 
@@ -64,7 +65,7 @@ The common native fixture starts with catalog 0, schema 0, snapshot 0 and the up
 
 `delete/delete_ignore_extra_columns.test` still reads the original checked-in Parquet/deletion files. Its legacy metadata is copied into a fresh managed fixture; the test no longer depends on automatic migration to reach the deletion regression.
 
-The fixtures mirror the `1.1-dev1-catalog1` relation definitions owned by Crucible. When that schema changes, update the native and PostgreSQL fixtures, the embedded `managed_catalogs` baseline and the quoted-identifier fixture together. Runtime tests remain independent of Crucible.
+The fixtures mirror the `1.1-dev1-catalog2` relation definitions owned by Crucible. When that schema changes, update the native and PostgreSQL fixtures, the embedded `managed_catalogs` baseline and the quoted-identifier fixture together. Runtime tests remain independent of Crucible.
 
 ## Explicit exclusions
 
@@ -94,7 +95,25 @@ The audit compared old fork `4ccee75fe091291ad722c41363c0cdc145ae9bad` against b
 
 The metadata backend type check also accepts the uppercase `DUCKDB` spelling supplied through metadata parameters.
 
-## Local validation, 2026-09-22
+## Native-file validation, 2026-09-23
+
+Built the loadable extension and test executable against the pinned runtime on
+macOS arm64. The final full managed SQL invocation used a disposable Docker
+PostgreSQL 17 instance, so all four PostgreSQL catalog cases ran. It passed 543
+cases with 22,912 assertions and 25 conditional skips. The existing 42 explicit
+lifecycle exclusions are unchanged. Engine reads of inherited table/view history
+and rejection of change scans crossing a fork boundary are included.
+
+Crucible separately verified catalog2 migration, file versions, successive forks,
+atomic table/file publication, stale writers and engine schema-drop interaction
+against this build and Docker PostgreSQL. After consolidating redundant cases,
+it retains eight native-file integration scenarios. The four changed surviving
+scenarios passed; unchanged fork/migration/tool scenarios had passed in the
+preceding targeted run. Crucible's SQL/HTTP audit records remaining application
+reference, representation and historical-fork input gaps. DataManager integration
+remains separate from these storage tests.
+
+## Catalog-port validation, 2026-09-22
 
 Validated on macOS arm64 with the pinned release build, PostgreSQL 17 and the matched PostgreSQL scanner/libpq 18.6. The final native pass ran the same 599 ordinary SQL files in two disjoint batches: 42 explicit lifecycle exclusions, 28 prerequisite skips and 529 executed cases. Both batches passed after the final cleanup change.
 

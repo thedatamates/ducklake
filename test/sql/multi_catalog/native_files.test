@@ -1,0 +1,92 @@
+# name: test/sql/multi_catalog/native_files.test
+# description: Native files preserve schema ownership and immutable bytes during cleanup
+# group: [multi_catalog]
+
+require ducklake
+
+require parquet
+
+foreach fixture_path,fixture_schema,fixture_data_path {TEST_DIR}/native_files.db,main,{TEST_DIR}/data
+
+include test/fixtures/managed_catalog.sql
+
+endloop
+
+statement ok
+ATTACH 'ducklake:{TEST_DIR}/native_files.db' AS lake (CATALOG_ID 0, DATA_INLINING_ROW_LIMIT 0);
+CREATE TABLE lake.seed AS SELECT 1 AS id;
+CREATE SCHEMA lake.documents;
+CREATE TABLE lake.documents.seed AS SELECT 1 AS id;
+DROP TABLE lake.documents.seed;
+COPY (SELECT 9 AS id) TO '{TEST_DIR}/data/test/_files' (FORMAT PARQUET, PER_THREAD_OUTPUT true);
+COPY (SELECT 42 AS id) TO '{TEST_DIR}/data/test/retained.parquet';
+COPY (SELECT 11 AS id) TO '{TEST_DIR}/data/test/_files/unpublished.parquet';
+COPY (SELECT 7 AS id) TO '{TEST_DIR}/data/test/orphan.parquet';
+INSERT INTO __ducklake_metadata_lake.ducklake_file
+SELECT 0, 1000, uuid(), (SELECT max(snapshot_id) FROM __ducklake_metadata_lake.ducklake_snapshot), NULL, schema_id, 'reports/A.md', '{TEST_DIR}/data/test/retained.parquet', false, 0, 'text/markdown', repeat('0',64)
+FROM __ducklake_metadata_lake.ducklake_schema WHERE schema_name='documents';
+
+query I
+SELECT count(*) FROM duckdb_tables() WHERE database_name='lake' AND schema_name='documents';
+----
+0
+
+statement error
+DROP SCHEMA lake.documents CASCADE;
+----
+archive it through Crucible
+
+query I
+SELECT count(*) FROM __ducklake_metadata_lake.ducklake_file WHERE end_snapshot IS NULL;
+----
+1
+
+# Neither cleanup path may delete bytes staged in the reserved native-file area.
+# An archived version outside that area is protected by its retained metadata.
+statement ok
+UPDATE __ducklake_metadata_lake.ducklake_file SET end_snapshot=(SELECT max(snapshot_id)+1 FROM __ducklake_metadata_lake.ducklake_snapshot);
+DROP SCHEMA lake.documents;
+INSERT INTO __ducklake_metadata_lake.ducklake_files_scheduled_for_deletion
+SELECT 0, 9999, file, false, now() FROM glob('{TEST_DIR}/data/test/_files/*.parquet') WHERE file NOT LIKE '%unpublished.parquet';
+INSERT INTO __ducklake_metadata_lake.ducklake_files_scheduled_for_deletion
+VALUES (0, 9998, '{TEST_DIR}/data/test/retained.parquet', false, now());
+
+query I
+SELECT count(*) FROM ducklake_cleanup_old_files('lake', cleanup_all=>true, dry_run=>true);
+----
+0
+
+query I
+SELECT count(*) FROM ducklake_delete_orphaned_files('lake', cleanup_all=>true, dry_run=>true);
+----
+1
+
+statement ok
+CALL ducklake_cleanup_old_files('lake', cleanup_all=>true);
+CALL ducklake_delete_orphaned_files('lake', cleanup_all=>true);
+
+query II
+SELECT count(*), sum(id) FROM read_parquet('{TEST_DIR}/data/test/_files/*.parquet');
+----
+2	20
+
+query I
+SELECT id FROM read_parquet('{TEST_DIR}/data/test/retained.parquet');
+----
+42
+
+query I
+SELECT count(*) FROM glob('{TEST_DIR}/data/test/orphan.parquet');
+----
+0
+
+statement ok
+DETACH lake;
+ATTACH '{TEST_DIR}/native_files.db' AS inspect;
+UPDATE inspect.ducklake_metadata SET value='1.1-dev1-catalog1' WHERE key='version' AND catalog_id IS NULL;
+DETACH inspect;
+
+statement error
+ATTACH 'ducklake:{TEST_DIR}/native_files.db' AS old (CATALOG_ID 0);
+----
+requires Crucible metadata version 1.1-dev1-catalog2

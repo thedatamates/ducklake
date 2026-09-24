@@ -710,12 +710,15 @@ vector<DuckLakeMacroImplementation> DuckLakeMetadataManager::LoadMacroImplementa
 	return result;
 }
 
-idx_t DuckLakeMetadataManager::GetBeginSnapshotForTable(TableIndex table_id) {
+idx_t DuckLakeMetadataManager::GetBeginSnapshotForTable(TableIndex table_id, idx_t source_catalog_id) {
 	string query = R"(
 SELECT begin_snapshot
 FROM {METADATA_CATALOG}.ducklake_table
 WHERE catalog_id = {CATALOG_ID} AND table_id = {TABLE_ID})";
 	query = StringUtil::Replace(query, "{TABLE_ID}", to_string(table_id.index)).c_str();
+	if (source_catalog_id != DConstants::INVALID_INDEX) {
+		query = StringUtil::Replace(query, "{CATALOG_ID}", to_string(source_catalog_id));
+	}
 	auto result = Query(query);
 	for (auto &row : *result) {
 		return row.GetValue<idx_t>(0);
@@ -723,10 +726,11 @@ WHERE catalog_id = {CATALOG_ID} AND table_id = {TABLE_ID})";
 	throw InternalException("Table %llu does not exist", table_id.index);
 }
 
-idx_t DuckLakeMetadataManager::GetBeginSnapshotForSchemaVersion(TableIndex table_id, idx_t schema_version) {
+idx_t DuckLakeMetadataManager::GetBeginSnapshotForSchemaVersion(TableIndex table_id, idx_t schema_version,
+                                                                idx_t source_catalog_id) {
 	auto &catalog = transaction.GetCatalog();
 	auto cached_snapshot = catalog.TryGetSchemaVersionBeginSnapshot(table_id, schema_version);
-	if (cached_snapshot.IsValid()) {
+	if (source_catalog_id == DConstants::INVALID_INDEX && cached_snapshot.IsValid()) {
 		return cached_snapshot.GetIndex();
 	}
 	string query = R"(
@@ -735,18 +739,21 @@ FROM {METADATA_CATALOG}.ducklake_schema_versions
 WHERE catalog_id = {CATALOG_ID} AND table_id = {TABLE_ID} AND schema_version = {SCHEMA_VERSION})";
 	query = StringUtil::Replace(query, "{TABLE_ID}", to_string(table_id.index));
 	query = StringUtil::Replace(query, "{SCHEMA_VERSION}", to_string(schema_version));
+	if (source_catalog_id != DConstants::INVALID_INDEX) {
+		query = StringUtil::Replace(query, "{CATALOG_ID}", to_string(source_catalog_id));
+	}
 	auto result = Query(query);
 	for (auto &row : *result) {
 		auto begin_snapshot = row.GetValue<idx_t>(0);
 		// only cache rows that are already committed - a schema version written by this transaction can still
 		// be rolled back, and the fallback below is not stable either
-		if (!transaction.ChangesMade()) {
+		if (source_catalog_id == DConstants::INVALID_INDEX && !transaction.ChangesMade()) {
 			catalog.CacheSchemaVersionBeginSnapshot(table_id, schema_version, begin_snapshot);
 		}
 		return begin_snapshot;
 	}
 	// We need to fallback to GetBeginSnapshotForTable if this table doesnt have an alter yet
-	return GetBeginSnapshotForTable(table_id);
+	return GetBeginSnapshotForTable(table_id, source_catalog_id);
 }
 
 string DuckLakeMetadataManager::GetNetDataFileRowCountSql(TableIndex table_id, const string &inlined_deletion_table) {
@@ -2817,6 +2824,9 @@ void DuckLakeMetadataManager::SubstituteCatalogPlaceholders(string &query) const
 }
 
 void DuckLakeMetadataManager::SubstituteSnapshotPlaceholders(DuckLakeSnapshot snapshot, string &query) const {
+	if (snapshot.source_catalog_id != DConstants::INVALID_INDEX) {
+		query = StringUtil::Replace(query, "{CATALOG_ID}", to_string(snapshot.source_catalog_id));
+	}
 	auto &commit_info = transaction.GetCommitInfo();
 	query = StringUtil::Replace(query, "{SNAPSHOT_ID}", to_string(snapshot.snapshot_id));
 	query = StringUtil::Replace(query, "{SCHEMA_VERSION}", to_string(snapshot.schema_version));
@@ -3642,6 +3652,14 @@ string DuckLakeMetadataManager::GetInlinedDeletionTableName(TableIndex table_id,
                                                             bool create_if_not_exists) {
 	// The table name is always deterministic
 	string table_name = InlinedFileDeletionTableName(table_id);
+	if (snapshot.source_catalog_id != DConstants::INVALID_INDEX) {
+		if (create_if_not_exists) {
+			throw InvalidInputException("Cannot write inherited historical data");
+		}
+		auto query = StringUtil::Format("SELECT NULL FROM {METADATA_CATALOG}.%s LIMIT 1", table_name);
+		auto result = Query(snapshot, query);
+		return result->HasError() ? string() : table_name;
+	}
 
 	// Check per-transaction cache first (covers tables created in this transaction)
 	if (delete_inlined_table_cache.find(table_id.index) != delete_inlined_table_cache.end()) {
@@ -4898,7 +4916,7 @@ unique_ptr<DuckLakeSnapshot> DuckLakeMetadataManager::GetSnapshot(BoundAtClause 
 		result = Query(StringUtil::Format(R"(
 SELECT snapshot_id, schema_version, next_catalog_id, next_file_id
 FROM {METADATA_CATALOG}.ducklake_snapshot
-WHERE snapshot_id = %llu AND snapshot_id >= (SELECT MIN(begin_snapshot) FROM {METADATA_CATALOG}.ducklake_catalog WHERE catalog_id = {CATALOG_ID});)",
+WHERE snapshot_id = %llu;)",
 		                                  val.DefaultCastAs(LogicalType::UBIGINT).GetValue<idx_t>()));
 	} else if (unit == "timestamp") {
 		auto timestamp = val.CastAs(*transaction.GetConnection().context, LogicalType::TIMESTAMP_TZ);
@@ -4913,7 +4931,7 @@ FROM {METADATA_CATALOG}.ducklake_snapshot
 WHERE snapshot_id = (
 	SELECT snapshot_id
 	FROM {METADATA_CATALOG}.ducklake_snapshot
-	WHERE snapshot_time::TIMESTAMPTZ %s= %s AND snapshot_id >= (SELECT MIN(begin_snapshot) FROM {METADATA_CATALOG}.ducklake_catalog WHERE catalog_id = {CATALOG_ID})
+	WHERE snapshot_time::TIMESTAMPTZ %s= %s
 	ORDER BY snapshot_time::TIMESTAMPTZ %s
 	LIMIT 1);)",
 		    timestamp_condition, timestamp.DefaultCastAs(LogicalType::VARCHAR).ToSQLString(), timestamp_order));
@@ -4929,7 +4947,55 @@ WHERE snapshot_id = (
 		throw InvalidInputException("No snapshot found at %s %s", StringUtil::Lower(unit.GetIdentifierName()),
 		                            val.ToString());
 	}
+	*snapshot = ResolveSnapshot(*snapshot);
 	return snapshot;
+}
+
+DuckLakeSnapshot DuckLakeMetadataManager::ResolveSnapshot(DuckLakeSnapshot snapshot) {
+	auto catalog_id = transaction.GetCatalog().CatalogId();
+	unordered_set<idx_t> seen;
+	while (true) {
+		if (!seen.insert(catalog_id).second) {
+			throw InvalidInputException("Catalog ancestry contains a cycle");
+		}
+		auto origin = Query(StringUtil::Format(
+		    "SELECT begin_snapshot, parent_catalog_id, parent_snapshot_id FROM {METADATA_CATALOG}.ducklake_catalog "
+		    "WHERE catalog_id = %llu ORDER BY begin_snapshot LIMIT 1",
+		    catalog_id));
+		if (origin->HasError()) {
+			origin->GetErrorObject().Throw("Failed to read catalog ancestry: ");
+		}
+		auto chunk = origin->Fetch();
+		if (!chunk || chunk->size() != 1) {
+			throw InvalidInputException("Catalog history not found");
+		}
+		auto birth = chunk->GetValue(0, 0).GetValue<idx_t>();
+		if (snapshot.snapshot_id >= birth) {
+			if (catalog_id != transaction.GetCatalog().CatalogId()) {
+				snapshot.source_catalog_id = catalog_id;
+			}
+			return snapshot;
+		}
+		if (chunk->GetValue(1, 0).IsNull() || chunk->GetValue(2, 0).IsNull()) {
+			throw InvalidInputException("Snapshot predates this catalog");
+		}
+		catalog_id = chunk->GetValue(1, 0).GetValue<idx_t>();
+		auto cutoff = chunk->GetValue(2, 0).GetValue<idx_t>();
+		if (snapshot.snapshot_id > cutoff) {
+			auto result = Query(StringUtil::Format("SELECT snapshot_id, schema_version, next_catalog_id, next_file_id "
+			                                       "FROM {METADATA_CATALOG}.ducklake_snapshot "
+			                                       "WHERE snapshot_id = %llu",
+			                                       cutoff));
+			if (result->HasError()) {
+				result->GetErrorObject().Throw("Failed to read parent snapshot: ");
+			}
+			auto parent = ParseSnapshot(*result);
+			if (!parent) {
+				throw InvalidInputException("Parent snapshot not found");
+			}
+			snapshot = *parent;
+		}
+	}
 }
 
 static unordered_map<idx_t, DuckLakePartitionInfo>
@@ -5349,16 +5415,54 @@ static timestamp_tz_t GetTimestampTZFromRow(ClientContext &context, const T &row
 }
 
 vector<DuckLakeSnapshotInfo> DuckLakeMetadataManager::GetAllSnapshots(const string &filter) {
+	string visible_catalogs;
+	auto catalog_id = transaction.GetCatalog().CatalogId();
+	idx_t cutoff = DConstants::INVALID_INDEX;
+	unordered_set<idx_t> seen;
+	while (true) {
+		if (!seen.insert(catalog_id).second) {
+			throw InvalidInputException("Catalog ancestry contains a cycle");
+		}
+		auto origin = Query(StringUtil::Format(
+		    "SELECT begin_snapshot, parent_catalog_id, parent_snapshot_id FROM {METADATA_CATALOG}.ducklake_catalog "
+		    "WHERE catalog_id = %llu ORDER BY begin_snapshot LIMIT 1",
+		    catalog_id));
+		if (origin->HasError()) {
+			origin->GetErrorObject().Throw("Failed to read catalog ancestry: ");
+		}
+		auto chunk = origin->Fetch();
+		if (!chunk || chunk->size() != 1) {
+			throw InvalidInputException("Catalog history not found");
+		}
+		auto birth = chunk->GetValue(0, 0).GetValue<idx_t>();
+		if (!visible_catalogs.empty()) {
+			visible_catalogs += " OR ";
+		}
+		visible_catalogs += StringUtil::Format(
+		    "((ducklake_snapshot_changes.catalog_id = %llu OR s.snapshot_id = %llu) AND s.snapshot_id >= %llu",
+		    catalog_id, birth, birth);
+		if (cutoff != DConstants::INVALID_INDEX) {
+			visible_catalogs += StringUtil::Format(" AND s.snapshot_id <= %llu", cutoff);
+		}
+		visible_catalogs += ")";
+		if (chunk->GetValue(1, 0).IsNull()) {
+			break;
+		}
+		if (chunk->GetValue(2, 0).IsNull()) {
+			throw InvalidInputException("Parent snapshot is missing");
+		}
+		catalog_id = chunk->GetValue(1, 0).GetValue<idx_t>();
+		cutoff = MinValue<idx_t>(cutoff, chunk->GetValue(2, 0).GetValue<idx_t>());
+	}
 	auto res = Query(StringUtil::Format(R"(
 SELECT snapshot_id, snapshot_time, schema_version, next_file_id, changes_made, author, commit_message, commit_extra_info
 FROM {METADATA_CATALOG}.ducklake_snapshot s
 LEFT JOIN {METADATA_CATALOG}.ducklake_snapshot_changes USING (snapshot_id)
-WHERE (ducklake_snapshot_changes.catalog_id = {CATALOG_ID}
-       OR snapshot_id IN (SELECT begin_snapshot FROM {METADATA_CATALOG}.ducklake_catalog WHERE catalog_id = {CATALOG_ID}))
+WHERE (%s)
 %s %s
 ORDER BY snapshot_id
 )",
-	                                    filter.empty() ? "" : "AND", filter));
+	                                    visible_catalogs, filter.empty() ? "" : "AND", filter));
 	if (res->HasError()) {
 		res->GetErrorObject().Throw("Failed to get snapshot information from DuckLake: ");
 	}
@@ -5414,7 +5518,8 @@ WHERE catalog_id = {CATALOG_ID}
 		path.path = row.GetValue<string>(1);
 		path.path_is_relative = row.GetValue<bool>(2);
 		info.path = FromRelativePath(path);
-		if (referenced_paths.count(fs.CanonicalizePath(info.path))) {
+		if (StringUtil::Contains(StringUtil::Replace(info.path, "\\", "/"), "/_files/") ||
+		    referenced_paths.count(fs.CanonicalizePath(info.path))) {
 			continue;
 		}
 		info.time = GetTimestampTZFromRow(*context, row, 3);
@@ -5448,6 +5553,13 @@ FROM
   ) AS f
    JOIN {METADATA_CATALOG}.ducklake_table t ON f.catalog_id = t.catalog_id AND f.table_id = t.table_id
    JOIN {METADATA_CATALOG}.ducklake_schema s ON t.catalog_id = s.catalog_id AND t.schema_id = s.schema_id) AS r
+)";
+	query += R"(UNION ALL
+SELECT REPLACE(CASE WHEN NOT f.path_is_relative THEN f.path
+                   WHEN NOT s.path_is_relative THEN s.path || f.path
+                   ELSE {BASE_DATA_PATH} || s.path || f.path END, '\', '/') AS full_path
+FROM {METADATA_CATALOG}.ducklake_file f
+JOIN {METADATA_CATALOG}.ducklake_schema s ON f.catalog_id = s.catalog_id AND f.schema_id = s.schema_id
 )";
 	if (!include_scheduled) {
 		return query;
@@ -5484,6 +5596,7 @@ vector<DuckLakeFileForCleanup> DuckLakeMetadataManager::GetOrphanFilesForCleanup
 	auto query = StringUtil::Format(R"(SELECT filename
 FROM read_blob({DATA_PATH} || '**') files
 WHERE (suffix(filename, '.parquet') OR suffix(filename, '.puffin'))
+AND NOT contains(replace(filename, '\', '/'), '/_files/')
 %s)",
 	                                filter);
 	SubstituteCatalogPlaceholders(query);

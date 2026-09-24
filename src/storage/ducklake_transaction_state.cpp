@@ -1676,6 +1676,17 @@ string DuckLakeTransactionState::CommitChanges(DuckLakeCommitState &commit_state
 	if (!dropped_schemas.empty()) {
 		set<SchemaIndex> dropped_schema_ids;
 		for (auto &entry : dropped_schemas) {
+			auto files = context.query_metadata(
+			    StringUtil::Format("SELECT 1 FROM {METADATA_CATALOG}.ducklake_file WHERE catalog_id = {CATALOG_ID} "
+			                       "AND schema_id = %llu AND end_snapshot IS NULL LIMIT 1",
+			                       entry.first.index));
+			if (files->HasError()) {
+				files->GetErrorObject().Throw("Failed to check native schema files: ");
+			}
+			auto chunk = files->Fetch();
+			if (chunk && chunk->size() > 0) {
+				throw InvalidInputException("Schema contains native files; archive it through Crucible");
+			}
 			dropped_schema_ids.insert(entry.first);
 		}
 		batch_queries += DuckLakeMetadataManager::DropSchemas(dropped_schema_ids);

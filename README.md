@@ -13,7 +13,7 @@ ATTACH 'ducklake:postgres:dbname=metabase' AS workbook
     (CATALOG_ID 42, DATA_PATH '/shared/data/');
 ```
 
-The metadata format is `1.1-dev1-catalog1`. The authoritative fresh schema and its migrations live in Monogram at `macro/services/crucible/src/migration/metabase/`. The extension does not create or migrate this schema. This integration does not migrate old development data.
+The metadata format is `1.1-dev1-catalog2`. The authoritative schema and migrations live in Monogram at `macro/services/crucible/src/migration/metabase/`. Crucible upgrades catalog1 metadata with native file records and a parent snapshot cutoff for forks. Drain existing connections before migration and reopen them with this matching extension. The extension does not create or migrate metadata.
 
 ## Documentation
 
@@ -27,4 +27,4 @@ The metadata format is `1.1-dev1-catalog1`. The authoritative fresh schema and i
 
 The analytical SQL suite uses explicitly provisioned catalog fixtures. Dedicated native and PostgreSQL tests cover catalog isolation, concurrent allocation, lineage, forks and retention. [Testing](docs/TESTING.md) records coverage and the explicit exclusions for unsupported upstream lifecycle behavior. Production packaging has not been validated.
 
-Snapshot expiration is disabled because upstream's implementation assumes exclusive ownership of the snapshot history. Files referenced by any catalog are protected during cleanup. Forks expose current data and retain schema history needed to decode it; ancestor data-history inheritance and native generic-file objects are separate planned work.
+Snapshot expiration is disabled because upstream's implementation assumes exclusive ownership of the snapshot history. Cleanup protects table files and native file versions referenced by any catalog, plus the reserved `_files/` storage area. Crucible writes and reads native files; they are not SQL tables. Engine schema drops reject live native files, including CASCADE. Forks retain their selected source snapshot. Earlier table/view reads resolve through bounded ancestry, including successive forks; later parent changes do not enter child history. Change-range scans crossing a fork boundary are rejected rather than mixing catalog namespaces.

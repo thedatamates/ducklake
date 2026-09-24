@@ -57,13 +57,19 @@ SELECT a.table_id=b.table_id, a.data_file_id=b.data_file_id, a.path=b.path FROM 
 ----
 true	true	true
 
-statement error
-SELECT * FROM child.items AT (VERSION => 1);
+query II
+SELECT count(*), sum(id) FROM child.items AT (VERSION => 1);
 ----
-snapshot
+10	45
+
+# Exact inherited snapshots work; a change scan must not silently mix namespaces.
+statement error
+SELECT * FROM ducklake_table_insertions('child', 'main', 'items', 1::BIGINT, getvariable('fork_snapshot')::BIGINT);
+----
+Change ranges crossing a catalog fork are not supported
 
 query I
-SELECT min(snapshot_id)=getvariable('fork_snapshot') FROM ducklake_snapshots('child');
+SELECT min(snapshot_id)=0 FROM ducklake_snapshots('child');
 ----
 true
 
