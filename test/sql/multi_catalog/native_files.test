@@ -89,4 +89,4 @@ DETACH inspect;
 statement error
 ATTACH 'ducklake:{TEST_DIR}/native_files.db' AS old (CATALOG_ID 0);
 ----
-requires Crucible metadata version 1.1-dev1-catalog2
+requires Crucible metadata version 1.1-dev1-catalog3

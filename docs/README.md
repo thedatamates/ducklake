@@ -6,7 +6,7 @@ DuckLake stores table metadata in SQL and data in Parquet. [Upstream documentati
 
 ## Provisioning and attachment
 
-Crucible provisions and migrates metadata through `crucible mb migrate`. Its authoritative migrations live in `macro/services/crucible/src/migration/metabase/` in Monogram. The format marker is `1.1-dev1-catalog2`; the file migration upgrades catalog1 metadata. Drain existing connections before migration, then reopen with the matching extension.
+Crucible provisions and migrates metadata through `crucible mb migrate`. Its authoritative migrations live in `macro/services/crucible/src/migration/metabase/` in Monogram. The format marker is `1.1-dev1-catalog3`; the file migration upgrades catalog1 metadata and the alias migration upgrades catalog2. Drain existing connections before migration, then reopen with the matching extension.
 
 Create catalogs through Crucible, then attach their numeric IDs:
 

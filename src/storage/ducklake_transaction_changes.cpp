@@ -9,6 +9,9 @@ enum class ChangeType {
 	CREATED_FILE,
 	ALTERED_FILE,
 	DROPPED_FILE,
+	CREATED_ALIAS,
+	UPDATED_ALIAS,
+	DISCARDED_ALIAS,
 	FORKED_FROM,
 	CREATED_TABLE,
 	CREATED_VIEW,
@@ -51,6 +54,12 @@ ChangeType ParseChangeType(const string &changes_made, idx_t &pos) {
 		return ChangeType::ALTERED_FILE;
 	} else if (StringUtil::CIEquals(change_type_str, "dropped_file")) {
 		return ChangeType::DROPPED_FILE;
+	} else if (StringUtil::CIEquals(change_type_str, "created_alias")) {
+		return ChangeType::CREATED_ALIAS;
+	} else if (StringUtil::CIEquals(change_type_str, "updated_alias")) {
+		return ChangeType::UPDATED_ALIAS;
+	} else if (StringUtil::CIEquals(change_type_str, "discarded_alias")) {
+		return ChangeType::DISCARDED_ALIAS;
 	} else if (StringUtil::CIEquals(change_type_str, "forked_from")) {
 		return ChangeType::FORKED_FROM;
 	} else if (StringUtil::CIEquals(change_type_str, "created_table")) {
@@ -160,6 +169,17 @@ SnapshotChangeInformation SnapshotChangeInformation::ParseChangesMade(const stri
 			break;
 		case ChangeType::DROPPED_FILE:
 			result.dropped_files.insert(StringUtil::ToUnsigned(entry.change_value));
+			break;
+		case ChangeType::CREATED_ALIAS: {
+			auto value = DuckLakeUtil::ParseCatalogEntry(entry.change_value);
+			result.created_aliases[value.schema].insert(std::move(value.name));
+			break;
+		}
+		case ChangeType::UPDATED_ALIAS:
+			result.updated_aliases.insert(StringUtil::ToUnsigned(entry.change_value));
+			break;
+		case ChangeType::DISCARDED_ALIAS:
+			result.discarded_aliases.insert(StringUtil::ToUnsigned(entry.change_value));
 			break;
 		case ChangeType::CREATED_TABLE: {
 			auto catalog_value = DuckLakeUtil::ParseCatalogEntry(entry.change_value);

@@ -1687,6 +1687,17 @@ string DuckLakeTransactionState::CommitChanges(DuckLakeCommitState &commit_state
 			if (chunk && chunk->size() > 0) {
 				throw InvalidInputException("Schema contains native files; archive it through Crucible");
 			}
+			auto aliases = context.query_metadata(
+			    StringUtil::Format("SELECT 1 FROM {METADATA_CATALOG}.ducklake_alias WHERE catalog_id = {CATALOG_ID} "
+			                       "AND schema_id = %llu AND end_snapshot IS NULL AND source_kind IS NOT NULL LIMIT 1",
+			                       entry.first.index));
+			if (aliases->HasError()) {
+				aliases->GetErrorObject().Throw("Failed to check schema aliases: ");
+			}
+			auto alias_chunk = aliases->Fetch();
+			if (alias_chunk && alias_chunk->size() > 0) {
+				throw InvalidInputException("Schema contains aliases; discard them through Crucible");
+			}
 			dropped_schema_ids.insert(entry.first);
 		}
 		batch_queries += DuckLakeMetadataManager::DropSchemas(dropped_schema_ids);
