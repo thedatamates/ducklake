@@ -49,9 +49,6 @@ struct SnapshotChangeInformation {
 	map<string, set<string>> created_files;
 	set<idx_t> altered_files;
 	set<idx_t> dropped_files;
-	map<string, set<string>> created_aliases;
-	set<idx_t> updated_aliases;
-	set<idx_t> discarded_aliases;
 	optional_idx forked_from;
 	case_insensitive_set_t created_schemas;
 	set<SchemaIndex> dropped_schemas;

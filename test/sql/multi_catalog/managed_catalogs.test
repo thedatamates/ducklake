@@ -41,7 +41,6 @@ CREATE TABLE ducklake_tag(catalog_id BIGINT NOT NULL, object_id BIGINT, begin_sn
 CREATE TABLE ducklake_view(catalog_id BIGINT NOT NULL, view_id BIGINT, view_uuid UUID, begin_snapshot BIGINT, end_snapshot BIGINT, schema_id BIGINT, view_name VARCHAR, dialect VARCHAR, "sql" VARCHAR, column_aliases VARCHAR, PRIMARY KEY ("catalog_id", "view_id", "begin_snapshot"));
 CREATE TABLE ducklake_view_column_tag(catalog_id BIGINT NOT NULL, view_id BIGINT, column_name VARCHAR, begin_snapshot BIGINT, end_snapshot BIGINT, "key" VARCHAR, "value" VARCHAR, PRIMARY KEY ("catalog_id", "view_id", "column_name", "key", "begin_snapshot"));
 CREATE TABLE ducklake_file (catalog_id BIGINT NOT NULL, file_id BIGINT NOT NULL, file_uuid UUID NOT NULL, begin_snapshot BIGINT NOT NULL, end_snapshot BIGINT, schema_id BIGINT NOT NULL, file_name VARCHAR NOT NULL, path VARCHAR NOT NULL, path_is_relative BOOLEAN NOT NULL, file_size_bytes BIGINT NOT NULL, mime_type VARCHAR NOT NULL, content_hash VARCHAR NOT NULL, PRIMARY KEY(catalog_id, file_id, begin_snapshot));
-CREATE TABLE ducklake_alias (catalog_id BIGINT NOT NULL, alias_id BIGINT NOT NULL, alias_uuid UUID NOT NULL, begin_snapshot BIGINT NOT NULL, end_snapshot BIGINT, schema_id BIGINT NOT NULL, alias_name VARCHAR NOT NULL, source_kind VARCHAR, source_catalog_id BIGINT, source_schema_id BIGINT, source_name VARCHAR, PRIMARY KEY(catalog_id, alias_id, begin_snapshot));
 CREATE TABLE ducklake_catalog (
     catalog_id BIGINT NOT NULL,
     catalog_uuid UUID NOT NULL,
@@ -60,7 +59,7 @@ CREATE TABLE ducklake_snapshot_lineage (
 );
 CREATE SEQUENCE ducklake_snapshot_id_seq START 1;
 INSERT INTO ducklake_metadata (key, value) VALUES
-    ('version', '1.1-dev1-catalog3'),
+    ('version', '1.1-dev1-catalog2'),
     ('encrypted', 'false');
 INSERT INTO ducklake_snapshot (snapshot_id, schema_version, next_catalog_id, next_file_id)
 VALUES (0, 0, 1, 1);

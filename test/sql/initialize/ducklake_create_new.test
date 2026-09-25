@@ -63,7 +63,7 @@ DETACH inspect;
 statement error
 ATTACH 'ducklake:{TEST_DIR}/metadata.db' AS workbook (CATALOG_ID 0);
 ----
-requires Crucible metadata version 1.1-dev1-catalog3
+requires Crucible metadata version 1.1-dev1-catalog2
 
 statement ok
 ATTACH '{TEST_DIR}/metadata.db' AS inspect;
@@ -84,7 +84,7 @@ version is missing
 
 statement ok
 ATTACH '{TEST_DIR}/metadata.db' AS inspect;
-INSERT INTO inspect.ducklake_metadata(key,value) VALUES ('version','1.1-dev1-catalog3');
+INSERT INTO inspect.ducklake_metadata(key,value) VALUES ('version','1.1-dev1-catalog2');
 UPDATE inspect.ducklake_catalog SET end_snapshot=1 WHERE catalog_id=0;
 DETACH inspect;
 

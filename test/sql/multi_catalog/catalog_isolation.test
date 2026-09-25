@@ -114,7 +114,7 @@ SELECT catalog_id, value FROM inspect.isolation.ducklake_metadata WHERE key='dat
 1	100
 
 query I
-SELECT count(*) FROM inspect.isolation.ducklake_metadata WHERE key='version' AND catalog_id IS NULL AND value='1.1-dev1-catalog3';
+SELECT count(*) FROM inspect.isolation.ducklake_metadata WHERE key='version' AND catalog_id IS NULL AND value='1.1-dev1-catalog2';
 ----
 1
 

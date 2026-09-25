@@ -22,7 +22,7 @@ build/release/test/unittest --test-dir . \
   --test-config test/configs/managed.json 'test/sql/multi_catalog/*'
 ```
 
-Without this environment variable, the four PostgreSQL cases report a prerequisite skip. The native `managed_catalogs`, `catalog_discovery`, `retention_guards`, `native_files` and `aliases` cases still run. The `Catalogs` CI job builds PostgreSQL support, creates its own database and sets the variable explicitly.
+Without this environment variable, the four PostgreSQL cases report a prerequisite skip. The native `managed_catalogs`, `catalog_discovery`, `retention_guards` and `native_files` cases still run. The `Catalogs` CI job builds PostgreSQL support, creates its own database and sets the variable explicitly.
 
 Other existing configurations retain their own prerequisites and exclusions and inherit the managed lifecycle exclusions:
 
@@ -54,7 +54,6 @@ Use exact test paths or a trailing `*` when selecting cases. This Catch runner d
 | Expiration rejection | `multi_catalog/retention_guards.test`: failed expiration leaves snapshot/data/delete metadata unchanged; compaction, checkpoint, drop and cleanup preserve historical reads |
 | Views with inlining validation | `settings/inlining_with_views.test`: global and schema inlining changes with committed and transaction-local views do not cast views to tables |
 | Native files | `multi_catalog/native_files.test`: native files are not SQL tables; live files block schema drops; archived file references and staged `_files/` bytes survive both cleanup paths; unrelated orphans remain eligible; catalog1 attachments are rejected |
-| Aliases | `multi_catalog/aliases.test`: aliases are not SQL tables; Crucible's alias changes parse in snapshot listings and later commits; current aliases block schema drops and discarded ones do not; catalog2 attachments are rejected |
 
 Paths in the table are relative to `test/sql/`. These tests establish the extension's behavior against a valid provisioned fork; they do not claim to test Crucible's implementation of the provisioning transaction.
 
@@ -66,7 +65,7 @@ The common native fixture starts with catalog 0, schema 0, snapshot 0 and the up
 
 `delete/delete_ignore_extra_columns.test` still reads the original checked-in Parquet/deletion files. Its legacy metadata is copied into a fresh managed fixture; the test no longer depends on automatic migration to reach the deletion regression.
 
-The fixtures mirror the `1.1-dev1-catalog3` relation definitions owned by Crucible. When that schema changes, update the native and PostgreSQL fixtures, the embedded `managed_catalogs` baseline and the quoted-identifier fixture together. Runtime tests remain independent of Crucible.
+The fixtures mirror the `1.1-dev1-catalog2` relation definitions owned by Crucible. When that schema changes, update the native and PostgreSQL fixtures, the embedded `managed_catalogs` baseline and the quoted-identifier fixture together. Runtime tests remain independent of Crucible.
 
 ## Explicit exclusions
 

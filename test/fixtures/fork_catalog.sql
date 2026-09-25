@@ -17,11 +17,6 @@ INSERT INTO inspect.{fixture_schema}.ducklake_file
 SELECT * REPLACE (1 AS catalog_id, uuid() AS file_uuid)
 FROM inspect.{fixture_schema}.ducklake_file WHERE catalog_id=0 AND end_snapshot IS NULL;
 
-statement ok
-INSERT INTO inspect.{fixture_schema}.ducklake_alias
-SELECT * REPLACE (1 AS catalog_id, uuid() AS alias_uuid)
-FROM inspect.{fixture_schema}.ducklake_alias WHERE catalog_id=0 AND end_snapshot IS NULL;
-
 foreach relation ducklake_schema ducklake_table ducklake_column ducklake_schema_versions ducklake_metadata ducklake_table_stats ducklake_table_column_stats ducklake_view ducklake_view_column_tag ducklake_tag ducklake_column_tag ducklake_macro ducklake_macro_impl ducklake_macro_parameters ducklake_column_mapping ducklake_name_mapping ducklake_partition_info ducklake_partition_column ducklake_sort_info ducklake_sort_expression ducklake_file_column_stats ducklake_file_variant_stats ducklake_file_partition_value
 
 statement ok

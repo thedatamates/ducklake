@@ -6,7 +6,7 @@ PostgreSQL is the shared metabase used by Crucible. Multiple DuckLake catalogs o
 
 Build the [matched runtime and PostgreSQL scanner](BUILD.md). Provision the fresh metabase with `crucible mb migrate`, using Crucible's configured metabase connection, then create catalogs through Crucible. Its authoritative schema is `macro/services/crucible/src/migration/metabase/schema.sql` in Monogram.
 
-The format marker is `1.1-dev1-catalog3`. In addition to the shared snapshot sequence, snapshot lineage and catalog-aware keys, it includes versioned native files, versioned aliases and the source snapshot for catalog forks. Crucible's file migration upgrades catalog1 metadata and its alias migration upgrades catalog2; drain existing attachments before migration and reopen with the matching extension. The extension requires an existing schema and active catalog; ATTACH does not provision either.
+The format marker is `1.1-dev1-catalog2`. In addition to the shared snapshot sequence, snapshot lineage and catalog-aware keys, it includes versioned native files and the source snapshot for catalog forks. Crucible's file migration upgrades catalog1 metadata; drain existing attachments before migration and reopen with the matching extension. The extension requires an existing schema and active catalog; ATTACH does not provision either.
 
 ## Attachment
 
