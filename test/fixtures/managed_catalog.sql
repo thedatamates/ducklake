@@ -36,6 +36,7 @@ CREATE TABLE ducklake_tag(catalog_id BIGINT NOT NULL, object_id BIGINT, begin_sn
 CREATE TABLE ducklake_view(catalog_id BIGINT NOT NULL, view_id BIGINT, view_uuid UUID, begin_snapshot BIGINT, end_snapshot BIGINT, schema_id BIGINT, view_name VARCHAR, dialect VARCHAR, "sql" VARCHAR, column_aliases VARCHAR, PRIMARY KEY ("catalog_id", "view_id", "begin_snapshot"));
 CREATE TABLE ducklake_view_column_tag(catalog_id BIGINT NOT NULL, view_id BIGINT, column_name VARCHAR, begin_snapshot BIGINT, end_snapshot BIGINT, "key" VARCHAR, "value" VARCHAR, PRIMARY KEY ("catalog_id", "view_id", "column_name", "key", "begin_snapshot"));
 CREATE TABLE ducklake_file (catalog_id BIGINT NOT NULL, file_id BIGINT NOT NULL, file_uuid UUID NOT NULL, begin_snapshot BIGINT NOT NULL, end_snapshot BIGINT, schema_id BIGINT NOT NULL, file_name VARCHAR NOT NULL, path VARCHAR NOT NULL, path_is_relative BOOLEAN NOT NULL, file_size_bytes BIGINT NOT NULL, mime_type VARCHAR NOT NULL, content_hash VARCHAR NOT NULL, PRIMARY KEY(catalog_id, file_id, begin_snapshot));
+CREATE TABLE ducklake_alias (catalog_id BIGINT NOT NULL, alias_id BIGINT NOT NULL, alias_uuid UUID NOT NULL, begin_snapshot BIGINT NOT NULL, end_snapshot BIGINT, schema_id BIGINT NOT NULL, alias_name VARCHAR NOT NULL, source_kind VARCHAR, source_catalog_id BIGINT, source_schema_id BIGINT, source_name VARCHAR, PRIMARY KEY(catalog_id, alias_id, begin_snapshot));
 CREATE TABLE ducklake_catalog (
     catalog_id BIGINT NOT NULL,
     catalog_uuid UUID NOT NULL,
@@ -53,7 +54,7 @@ CREATE TABLE ducklake_snapshot_lineage (
     PRIMARY KEY (catalog_id, previous_snapshot_id)
 );
 CREATE SEQUENCE ducklake_snapshot_id_seq START 1;
-INSERT INTO ducklake_metadata (key, value) VALUES ('version', '1.1-dev1-catalog2'), ('encrypted', 'false');
+INSERT INTO ducklake_metadata (key, value) VALUES ('version', '1.1-dev1-catalog3'), ('encrypted', 'false');
 INSERT INTO ducklake_metadata (catalog_id, key, value) VALUES (0, 'data_path', rtrim('{fixture_data_path}', '/') || '/');
 INSERT INTO ducklake_snapshot VALUES (0, now(), 0, 1, 0);
 INSERT INTO ducklake_catalog (catalog_id, catalog_uuid, catalog_name, parent_catalog_id, begin_snapshot, end_snapshot) VALUES (0, '00000000-0000-0000-0000-000000000001', 'test', NULL, 0, NULL);

@@ -156,8 +156,8 @@ void DuckLakeInitializer::LoadExistingDuckLake(DuckLakeTransaction &transaction)
 	DuckLakeVersion resolved_version = DuckLakeVersion::UNSET;
 	for (auto &tag : metadata.tags) {
 		if (tag.key == "version") {
-			if (tag.value != "1.1-dev1-catalog2") {
-				throw InvalidInputException("DuckLake requires Crucible metadata version 1.1-dev1-catalog2; found %s",
+			if (tag.value != "1.1-dev1-catalog3") {
+				throw InvalidInputException("DuckLake requires Crucible metadata version 1.1-dev1-catalog3; found %s",
 				                            tag.value);
 			}
 			resolved_version = DuckLakeVersion::V1_1_DEV_1;

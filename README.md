@@ -13,7 +13,7 @@ ATTACH 'ducklake:postgres:dbname=metabase' AS workbook
     (CATALOG_ID 42, DATA_PATH '/shared/data/');
 ```
 
-The metadata format is `1.1-dev1-catalog2`. The authoritative schema and migrations live in Monogram at `macro/services/crucible/src/migration/metabase/`. Crucible upgrades catalog1 metadata with native file records and a parent snapshot cutoff for forks. Drain existing connections before migration and reopen them with this matching extension. The extension does not create or migrate metadata.
+The metadata format is `1.1-dev1-catalog3`. The authoritative schema and migrations live in Monogram at `macro/services/crucible/src/migration/metabase/`. Crucible upgrades catalog1 metadata with native file records and a parent snapshot cutoff for forks, then catalog2 metadata with alias records. Drain existing connections before migration and reopen them with this matching extension. The extension does not create or migrate metadata.
 
 ## Documentation
 
